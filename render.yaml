@@ -1,0 +1,26 @@
+# Despliegue de la API en Render (plan gratuito). En Render: New → Blueprint → elige este repositorio.
+# El frontend NO va aquí: se compila y se sube al subdominio equipo6.centrofuyuan.com.
+services:
+  - type: web
+    name: oficioya-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: FORCE_HTTPS
+        value: "true"
+      - key: CORS_ORIGIN
+        value: https://equipo6.centrofuyuan.com,http://equipo6.centrofuyuan.com,http://localhost:5173
+      - key: DATABASE_URL
+        sync: false          # Render la pide al crear el servicio: pega la cadena de Neon
+      - key: JWT_SECRET
+        generateValue: true  # Render genera un secreto aleatorio
+      - key: IDENTITY_ENC_KEY
+        generateValue: true  # 256 bits aleatorios en base64 (AES-256)

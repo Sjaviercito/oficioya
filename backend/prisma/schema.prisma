@@ -1,0 +1,245 @@
+// Modelo de datos de OficioYa — refleja la sección 3.1 del contrato técnico.
+// Tablas y columnas en snake_case (@map); modelos y campos en camelCase.
+
+generator client {
+  provider   = "prisma-client-js"
+  // Cliente sin motor binario de Rust: usa el adaptador de "pg" (ver src/shared/prisma.js).
+  // Funciona en cualquier hosting con Node, sin descargar binarios específicos del sistema.
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  cliente
+  trabajador
+  admin
+}
+
+enum EstadoVerificacion {
+  sin_enviar
+  pendiente
+  aprobado
+  rechazado
+}
+
+enum EstadoSolicitud {
+  abierta
+  cotizada
+  aceptada
+  en_curso
+  completada
+  cancelada
+}
+
+enum EstadoCotizacion {
+  pendiente
+  aceptada
+  rechazada
+}
+
+enum RolCancelacion {
+  cliente
+  trabajador
+}
+
+model Usuario {
+  id           String   @id @default(uuid()) @db.Uuid
+  nombre       String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  rol          Rol
+  creadoEn     DateTime @default(now()) @map("creado_en")
+
+  perfilTrabajador PerfilTrabajador?
+  solicitudes      Solicitud[]       @relation("SolicitudCliente")
+  resenasHechas    Resena[]          @relation("ResenaCliente")
+  cancelaciones    Cancelacion[]
+  refreshTokens    RefreshToken[]
+  revisiones       Identificacion[]  @relation("IdentificacionRevisor")
+
+  @@map("usuario")
+}
+
+// Agregado en la Etapa 3 (no estaba en el modelo del contrato v0.2): implementa el ADR-04.
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  usuarioId  String    @map("usuario_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiraEn   DateTime  @map("expira_en")
+  creadoEn   DateTime  @default(now()) @map("creado_en")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_token")
+}
+
+model PerfilTrabajador {
+  id                       String             @id @default(uuid()) @db.Uuid
+  usuarioId                String             @unique @map("usuario_id") @db.Uuid
+  experienciaAnios         Int                @default(0) @map("experiencia_anios")
+  fotoUrl                  String?            @map("foto_url")
+  estadoVerificacion       EstadoVerificacion @default(sin_enviar) @map("estado_verificacion")
+  motivoRechazo            String?            @map("motivo_rechazo")
+  verificadoEn             DateTime?          @map("verificado_en")
+  solicitudesAceptadas     Int                @default(0) @map("solicitudes_aceptadas")
+  cancelacionesAtribuibles Int                @default(0) @map("cancelaciones_atribuibles")
+  trabajosCompletados      Int                @default(0) @map("trabajos_completados")
+  calificacionPonderada    Decimal?           @map("calificacion_ponderada") @db.Decimal(6, 4)
+  tasaCancelacion          Decimal            @default(0) @map("tasa_cancelacion") @db.Decimal(6, 4)
+  puntuacionRanking        Decimal?           @map("puntuacion_ranking") @db.Decimal(6, 4)
+  rankingActualizadoEn     DateTime?          @map("ranking_actualizado_en")
+
+  usuario        Usuario            @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  oficios        TrabajadorOficio[]
+  zonas          TrabajadorZona[]
+  identificacion Identificacion?
+  cotizaciones   Cotizacion[]
+  resenas        Resena[]
+
+  @@map("perfil_trabajador")
+}
+
+model Oficio {
+  id           Int                @id @default(autoincrement())
+  nombre       String             @unique
+  trabajadores TrabajadorOficio[]
+  solicitudes  Solicitud[]
+
+  @@map("oficio")
+}
+
+model Zona {
+  id           Int              @id @default(autoincrement())
+  nombre       String           @unique
+  trabajadores TrabajadorZona[]
+  solicitudes  Solicitud[]
+
+  @@map("zona")
+}
+
+model TrabajadorOficio {
+  trabajadorId String @map("trabajador_id") @db.Uuid
+  oficioId     Int    @map("oficio_id")
+
+  trabajador PerfilTrabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  oficio     Oficio           @relation(fields: [oficioId], references: [id])
+
+  @@id([trabajadorId, oficioId])
+  @@map("trabajador_oficio")
+}
+
+model TrabajadorZona {
+  trabajadorId String @map("trabajador_id") @db.Uuid
+  zonaId       Int    @map("zona_id")
+
+  trabajador PerfilTrabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  zona       Zona             @relation(fields: [zonaId], references: [id])
+
+  @@id([trabajadorId, zonaId])
+  @@map("trabajador_zona")
+}
+
+model Identificacion {
+  id                String    @id @default(uuid()) @db.Uuid
+  trabajadorId      String    @unique @map("trabajador_id") @db.Uuid
+  rutaIneCifrada    String    @map("ruta_ine_cifrada")
+  rutaSelfieCifrada String    @map("ruta_selfie_cifrada")
+  enviadaEn         DateTime  @default(now()) @map("enviada_en")
+  revisadaPor       String?   @map("revisada_por") @db.Uuid
+  revisadaEn        DateTime? @map("revisada_en")
+
+  trabajador PerfilTrabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  revisor    Usuario?         @relation("IdentificacionRevisor", fields: [revisadaPor], references: [id])
+
+  @@map("identificacion")
+}
+
+model Solicitud {
+  id                   String          @id @default(uuid()) @db.Uuid
+  clienteId            String          @map("cliente_id") @db.Uuid
+  oficioId             Int             @map("oficio_id")
+  zonaId               Int             @map("zona_id")
+  colonia              String
+  direccionExacta      String          @map("direccion_exacta")
+  descripcion          String
+  fechaDeseada         DateTime        @map("fecha_deseada") @db.Date
+  estado               EstadoSolicitud @default(abierta)
+  cotizacionAceptadaId String?         @unique @map("cotizacion_aceptada_id") @db.Uuid
+  creadaEn             DateTime        @default(now()) @map("creada_en")
+  completadaEn         DateTime?       @map("completada_en")
+
+  cliente            Usuario          @relation("SolicitudCliente", fields: [clienteId], references: [id])
+  oficio             Oficio           @relation(fields: [oficioId], references: [id])
+  zona               Zona             @relation(fields: [zonaId], references: [id])
+  fotos              FotoSolicitud[]
+  cotizaciones       Cotizacion[]     @relation("CotizacionesDeSolicitud")
+  cotizacionAceptada Cotizacion?      @relation("CotizacionAceptada", fields: [cotizacionAceptadaId], references: [id])
+  cancelacion        Cancelacion?
+  resena             Resena?
+
+  @@index([oficioId, zonaId, estado])
+  @@map("solicitud")
+}
+
+model FotoSolicitud {
+  id          String @id @default(uuid()) @db.Uuid
+  solicitudId String @map("solicitud_id") @db.Uuid
+  url         String
+
+  solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+
+  @@map("foto_solicitud")
+}
+
+model Cotizacion {
+  id                  String           @id @default(uuid()) @db.Uuid
+  solicitudId         String           @map("solicitud_id") @db.Uuid
+  trabajadorId        String           @map("trabajador_id") @db.Uuid
+  monto               Decimal          @db.Decimal(10, 2)
+  tiempoEstimadoHoras Int              @map("tiempo_estimado_horas")
+  estado              EstadoCotizacion @default(pendiente)
+  creadaEn            DateTime         @default(now()) @map("creada_en")
+
+  solicitud         Solicitud        @relation("CotizacionesDeSolicitud", fields: [solicitudId], references: [id], onDelete: Cascade)
+  trabajador        PerfilTrabajador @relation(fields: [trabajadorId], references: [id])
+  aceptadaEnSolicitud Solicitud?     @relation("CotizacionAceptada")
+
+  @@unique([solicitudId, trabajadorId])
+  @@map("cotizacion")
+}
+
+model Cancelacion {
+  id                     String         @id @default(uuid()) @db.Uuid
+  solicitudId            String         @unique @map("solicitud_id") @db.Uuid
+  canceladaPor           String         @map("cancelada_por") @db.Uuid
+  rolQueCancela          RolCancelacion @map("rol_que_cancela")
+  motivo                 String
+  detalle                String?
+  atribuibleAlTrabajador Boolean        @map("atribuible_al_trabajador")
+  fecha                  DateTime       @default(now())
+
+  solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  usuario   Usuario   @relation(fields: [canceladaPor], references: [id])
+
+  @@map("cancelacion")
+}
+
+model Resena {
+  id           String   @id @default(uuid()) @db.Uuid
+  solicitudId  String   @unique @map("solicitud_id") @db.Uuid
+  clienteId    String   @map("cliente_id") @db.Uuid
+  trabajadorId String   @map("trabajador_id") @db.Uuid
+  estrellas    Int
+  comentario   String?
+  creadaEn     DateTime @default(now()) @map("creada_en")
+
+  solicitud  Solicitud        @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  cliente    Usuario          @relation("ResenaCliente", fields: [clienteId], references: [id])
+  trabajador PerfilTrabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@map("resena")
+}
