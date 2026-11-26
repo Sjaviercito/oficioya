@@ -95,4 +95,54 @@ router.patch('/admin/workers/:trabajadorId/reinstate', requiereRol('admin'), asy
   res.json({ ok: true });
 });
 
+// v1.1-3: perfil público del trabajador (cualquier usuario con sesión). Sin correo ni datos de contacto.
+router.get('/workers/:trabajadorId/public', async (req, res) => {
+  const id = uuid.parse(req.params.trabajadorId);
+  const p = await prisma.perfilTrabajador.findFirst({
+    where: { id, estadoVerificacion: 'aprobado', suspendido: false },
+    include: {
+      usuario: { select: { nombre: true } },
+      oficios: { include: { oficio: true } },
+      zonas: { include: { zona: true } },
+      resenas: { orderBy: { creadaEn: 'desc' }, select: { estrellas: true, comentario: true, creadaEn: true, respuesta: true } },
+    },
+  });
+  if (!p) throw errores.notFound('Trabajador no encontrado');
+  const r2 = (n) => (n === null ? null : Math.round(Number(n) * 100) / 100);
+  res.json({
+    id: p.id,
+    nombre: p.usuario.nombre,
+    fotoUrl: p.fotoUrl,
+    experienciaAnios: p.experienciaAnios,
+    oficios: p.oficios.map((o) => o.oficio.nombre),
+    zonas: p.zonas.map((z) => z.zona.nombre),
+    trabajosCompletados: p.trabajosCompletados,
+    puntuacionRanking: r2(p.puntuacionRanking),
+    calificacionPonderada: r2(p.calificacionPonderada),
+    tasaCancelacion: r2(p.tasaCancelacion),
+    porcentajeConAjuste: p.trabajosCompletados > 0 ? Math.round((p.trabajosConAjuste / p.trabajosCompletados) * 100) : null,
+    esNuevo: p.puntuacionRanking === null,
+    resenas: p.resenas,
+  });
+});
+
+// v1.1-5: el administrador configura el tope de ajuste de cada oficio (10 % a 100 %).
+const tope = z.object({
+  topeAjuste: z.coerce.number({ message: 'Escribe el tope' }).min(0.1, { message: 'El tope debe estar entre 10 % y 100 %' }).max(1, { message: 'El tope debe estar entre 10 % y 100 %' }),
+});
+router.patch('/admin/oficios/:oficioId', requiereRol('admin'), async (req, res) => {
+  const oficioId = z.coerce.number().int().positive().parse(req.params.oficioId);
+  const { topeAjuste } = tope.parse(req.body);
+  const existe = await prisma.oficio.findUnique({ where: { id: oficioId } });
+  if (!existe) throw errores.notFound('Oficio no encontrado');
+  const o = await prisma.oficio.update({ where: { id: oficioId }, data: { topeAjuste } });
+  res.json({ ...o, topeAjuste: Number(o.topeAjuste) });
+});
+
+// v1.1-7: lista de trabajadores suspendidos para poder reactivarlos.
+router.get('/admin/workers/suspended', requiereRol('admin'), async (req, res) => {
+  const lista = await prisma.perfilTrabajador.findMany({ where: { suspendido: true }, include: { usuario: { select: { nombre: true, email: true } } } });
+  res.json(lista.map((p) => ({ trabajadorId: p.id, nombre: p.usuario.nombre, email: p.usuario.email })));
+});
+
 module.exports = router;

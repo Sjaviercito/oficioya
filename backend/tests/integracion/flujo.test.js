@@ -140,7 +140,9 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     });
     test('RNF-03 el archivo en disco está cifrado y no es una imagen', async () => {
       const ident = await prisma.identificacion.findUnique({ where: { trabajadorId: S.arturo.perfilId } });
-      const bytes = fs.readFileSync(path.resolve(process.env.PRIVATE_STORAGE_DIR, ident.rutaIneCifrada));
+      const guardado = await prisma.archivo.findUnique({ where: { clave: ident.rutaIneCifrada } });
+      expect(guardado.publico).toBe(false);
+      const bytes = Buffer.from(guardado.contenido);
       const { detectarTipo } = require('../../src/shared/middleware/upload');
       expect(detectarTipo(bytes)).toBeNull();
       expect(ident.rutaIneCifrada.endsWith('.enc')).toBe(true);
@@ -429,7 +431,7 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     test('responder dos veces el mismo ajuste → 409', async () => {
       await request(app).patch(`/api/v1/requests/${sol}/adjustments/${ajusteId}`).set(auth('luis')).send({ decision: 'rechazar' }).expect(409);
     });
-    test('CA-17.1 al completar, el perfil cuenta el trabajo con ajuste y el ranking no cambia de fórmula', async () => {
+    test('CA-17.1 al completar, el perfil cuenta el trabajo con ajuste y no cambia la tasa de cancelación', async () => {
       const antes = await prisma.perfilTrabajador.findUnique({ where: { id: S.carlos.perfilId } });
       await request(app).post(`/api/v1/requests/${sol}/complete`).set(auth('luis')).expect(200);
       const p = await prisma.perfilTrabajador.findUnique({ where: { id: S.carlos.perfilId } });
@@ -506,6 +508,44 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     test('v1.1-4 el sexto intento fallido en un minuto → 429', async () => {
       for (let i = 0; i < 5; i++) await request(app).post('/api/v1/auth/login').send({ email: 'luis@prueba.test', password: 'mala' }).expect(401);
       await request(app).post('/api/v1/auth/login').send({ email: 'luis@prueba.test', password: 'mala' }).expect(429);
+    });
+  });
+
+  describe('Mejoras v1.1 (segunda parte)', () => {
+    test('v1.1-1 la foto de perfil se guarda en la base y se sirve por /uploads; la INE nunca', async () => {
+      const p = await request(app).get('/api/v1/workers/me/profile').set(auth('arturo'));
+      const foto = await request(app).get(p.body.perfil.fotoUrl);
+      expect(foto.status).toBe(200);
+      expect(foto.headers['content-type']).toMatch(/image\/png/);
+      const ident = await prisma.identificacion.findUnique({ where: { trabajadorId: S.arturo.perfilId } });
+      await request(app).get(`/uploads/${ident.rutaIneCifrada}`).expect(404);
+    });
+    test('v1.1-3 perfil público con reseñas y respuestas, sin correo; suspendido o inexistente → 404', async () => {
+      const r = await request(app).get(`/api/v1/workers/${S[S.aceptado].perfilId}/public`).set(auth('luis'));
+      expect(r.status).toBe(200);
+      expect(r.body.resenas[0]).toMatchObject({ estrellas: 4, respuesta: 'Gracias por la confianza' });
+      expect(JSON.stringify(r.body)).not.toMatch(/@prueba\.test/);
+      await request(app).get('/api/v1/workers/00000000-0000-4000-8000-000000000000/public').set(auth('luis')).expect(404);
+    });
+    test('v1.1-5 el admin configura el tope por oficio; fuera de rango → 400; no admin → 403', async () => {
+      await request(app).patch(`/api/v1/admin/oficios/${cat.plomeria}`).set(auth('admin')).send({ topeAjuste: 1.5 }).expect(400);
+      await request(app).patch(`/api/v1/admin/oficios/${cat.plomeria}`).set(auth('ana')).send({ topeAjuste: 0.3 }).expect(403);
+      const ok = await request(app).patch(`/api/v1/admin/oficios/${cat.plomeria}`).set(auth('admin')).send({ topeAjuste: 0.3 });
+      expect(ok.body.topeAjuste).toBe(0.3);
+      const id = await crearSolicitud('luis');
+      const c = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('carlos')).send({ monto: 1000, tiempoEstimadoHoras: 2 });
+      await request(app).post(`/api/v1/requests/${id}/accept`).set(auth('luis')).send({ cotizacionId: c.body.cotizacion.id }).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/start`).set(auth('carlos')).expect(200);
+      const mal = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 1400, motivo: 'Material adicional para la pared' });
+      expect(mal.status).toBe(422);
+      expect(mal.body.error.message).toMatch(/30 %/);
+      await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 1300, motivo: 'Material adicional para la pared' }).expect(201);
+      await request(app).patch(`/api/v1/admin/oficios/${cat.plomeria}`).set(auth('admin')).send({ topeAjuste: 0.5 }).expect(200);
+    });
+    test('v1.1-7 lista de suspendidos para el admin', async () => {
+      const r = await request(app).get('/api/v1/admin/workers/suspended').set(auth('admin'));
+      expect(r.status).toBe(200);
+      expect(Array.isArray(r.body)).toBe(true);
     });
   });
 

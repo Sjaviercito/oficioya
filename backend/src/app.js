@@ -32,8 +32,19 @@ app.use(
 app.use(cors({ origin: config.corsOrigins }));
 app.use(express.json({ limit: '100kb' }));
 
-// Fotos públicas (perfil y solicitudes). Las identificaciones NO están aquí (ADR-05).
-app.use('/uploads', express.static(path.resolve(config.publicUploadsDir), { fallthrough: false, dotfiles: 'deny' }));
+// Fotos públicas (perfil y solicitudes), servidas desde la base de datos (ADR-05 v1.1).
+// Las identificaciones están marcadas como privadas y nunca salen por esta ruta.
+const { leerPublico } = require('./shared/storage');
+app.use('/uploads', async (req, res, next) => {
+  try {
+    const archivo = await leerPublico(decodeURIComponent(req.path.slice(1)));
+    if (!archivo) return res.status(404).end();
+    res.set('Cache-Control', 'public, max-age=86400');
+    return res.type(archivo.mime).send(archivo.buffer);
+  } catch (e) {
+    return next(e);
+  }
+});
 
 const api = express.Router();
 api.get('/health', (req, res) => res.json({ ok: true }));

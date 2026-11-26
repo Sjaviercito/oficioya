@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { urlArchivo } from '../api/client';
 
 export default function TarjetaTrabajador({ t, extra }) {
@@ -8,7 +9,7 @@ export default function TarjetaTrabajador({ t, extra }) {
         {t.fotoUrl ? <img src={urlArchivo(t.fotoUrl)} alt="" /> : inicial}
       </div>
       <div>
-        <div style={{ fontWeight: 650 }}>{t.nombre}</div>
+        <div style={{ fontWeight: 650 }}>{t.id ? <Link to={`/trabajadores/${t.id}`}>{t.nombre}</Link> : t.nombre}</div>
         <div className="pequeno suave">
           <span className="sello">✓ Verificado</span>{' '}
           {t.trabajosCompletados} {t.trabajosCompletados === 1 ? 'trabajo' : 'trabajos'}

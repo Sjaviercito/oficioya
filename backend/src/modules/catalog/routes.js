@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
     prisma.oficio.findMany({ orderBy: { nombre: 'asc' } }),
     prisma.zona.findMany({ orderBy: { nombre: 'asc' } }),
   ]);
-  res.json({ oficios, zonas });
+  res.json({ oficios: oficios.map((o) => ({ ...o, topeAjuste: Number(o.topeAjuste) })), zonas });
 });
 
 module.exports = router;

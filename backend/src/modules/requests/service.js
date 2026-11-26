@@ -59,7 +59,7 @@ function serializar(s, relacion, perfil) {
 
   const salida = {
     id: s.id,
-    oficio: s.oficio,
+    oficio: { ...s.oficio, topeAjuste: Number(s.oficio.topeAjuste) },
     zona: s.zona,
     colonia: s.colonia,
     descripcion: s.descripcion,

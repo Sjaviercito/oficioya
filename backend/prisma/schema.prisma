@@ -115,6 +115,8 @@ model PerfilTrabajador {
 model Oficio {
   id           Int                @id @default(autoincrement())
   nombre       String             @unique
+  // v1.1: tope de ajuste de precio por oficio (0.10 = +10 %, 1.00 = +100 %).
+  topeAjuste   Decimal            @default(0.50) @map("tope_ajuste") @db.Decimal(4, 2)
   trabajadores TrabajadorOficio[]
   solicitudes  Solicitud[]
 
@@ -299,4 +301,16 @@ model Notificacion {
 
   @@index([usuarioId, leida])
   @@map("notificacion")
+}
+
+// v1.1 (ADR-05 revisado): archivos guardados en PostgreSQL para que sobrevivan a los reinicios
+// de Render. Las identificaciones se guardan cifradas (AES-256-GCM) y nunca son públicas.
+model Archivo {
+  clave     String   @id
+  mime      String
+  contenido Bytes
+  publico   Boolean
+  creadoEn  DateTime @default(now()) @map("creado_en")
+
+  @@map("archivo")
 }

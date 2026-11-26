@@ -78,7 +78,7 @@ Por eso **el backend y el `.env` nunca se suben a ese servidor**.
 
 **Limitaciones del plan gratuito de Render** (reportarlas en la trazabilidad):
 - Se duerme tras 15 minutos sin uso; la primera petición tarda cerca de un minuto.
-- El disco se borra al reiniciar: las fotos e identificaciones subidas se pierden (ADR-05 pide disco persistente).
+- (Resuelto en v1.1) Las fotos e identificaciones ya no se pierden: se guardan en PostgreSQL.
 - El recálculo de las 03:00 no corre si el servicio está dormido; se puede ejecutar a mano con `npm run ranking:recalc`.
 
 ## Reglas de seguridad del proyecto

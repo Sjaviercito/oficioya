@@ -3,6 +3,8 @@
 const { diasCompletosEntre } = require('../../shared/fechas');
 
 const MIN_TRABAJOS_PARA_RANKING = 3;
+// v1.1: hasta -10 % de la puntuación si TODOS los trabajos terminaron con ajuste de precio.
+const PESO_AJUSTE = 0.1;
 
 // Peso por antigüedad: <90 días → 1.0; 90 a 365 → 0.6; >365 → 0.3.
 function pesoPorAntiguedad(dias) {
@@ -12,7 +14,7 @@ function pesoPorAntiguedad(dias) {
 }
 
 // resenas: [{ estrellas, creadaEn }]
-function calcularRanking({ resenas, solicitudesAceptadas, cancelacionesAtribuibles, trabajosCompletados }, ahora = new Date()) {
+function calcularRanking({ resenas, solicitudesAceptadas, cancelacionesAtribuibles, trabajosCompletados, trabajosConAjuste = 0 }, ahora = new Date()) {
   const tasaCancelacion = solicitudesAceptadas > 0 ? cancelacionesAtribuibles / solicitudesAceptadas : 0;
 
   let sumaPonderada = 0;
@@ -29,10 +31,12 @@ function calcularRanking({ resenas, solicitudesAceptadas, cancelacionesAtribuibl
   }
 
   const calificacionPonderada = sumaPonderada / sumaPesos;
+  const proporcionAjuste = trabajosCompletados > 0 ? trabajosConAjuste / trabajosCompletados : 0;
   return {
     calificacionPonderada,
     tasaCancelacion,
-    puntuacionRanking: calificacionPonderada * (1 - tasaCancelacion),
+    proporcionAjuste,
+    puntuacionRanking: calificacionPonderada * (1 - tasaCancelacion) * (1 - PESO_AJUSTE * proporcionAjuste),
     esNuevo: false,
   };
 }
@@ -52,4 +56,4 @@ function compararParaBusqueda(a, b) {
 
 const redondear2 = (n) => (n === null || n === undefined ? null : Math.round(n * 100) / 100);
 
-module.exports = { pesoPorAntiguedad, calcularRanking, compararParaBusqueda, redondear2, MIN_TRABAJOS_PARA_RANKING };
+module.exports = { PESO_AJUSTE, pesoPorAntiguedad, calcularRanking, compararParaBusqueda, redondear2, MIN_TRABAJOS_PARA_RANKING };

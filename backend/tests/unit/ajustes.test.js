@@ -29,6 +29,11 @@ describe('RF-16 — Reglas del ajuste de precio', () => {
     expect(falla(() => validarPropuesta(s, 1200))).toBeNull();
     expect(falla(() => validarPropuesta(s, 1250)).code).toBe('AJUSTE_EXCEDE_TOPE');
   });
+  test('v1.1-5 con tope de 30 % en el oficio, $1,040 se acepta y $1,041 → 422', () => {
+    const s = base({ oficio: { topeAjuste: 0.3 } });
+    expect(falla(() => validarPropuesta(s, 1040))).toBeNull();
+    expect(falla(() => validarPropuesta(s, 1041)).code).toBe('AJUSTE_EXCEDE_TOPE');
+  });
   test('un ajuste rechazado no cambia el monto vigente', () => {
     expect(montoVigente(base({ ajustes: [{ estado: 'rechazado', montoPropuesto: 1000, creadoEn: new Date() }] }))).toBe(800);
   });

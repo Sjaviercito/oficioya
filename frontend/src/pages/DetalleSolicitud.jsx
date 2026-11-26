@@ -277,7 +277,8 @@ function Ajustes({ s, rel, ocupado, onProponer, onDecidir }) {
   const pendiente = s.ajustes.find((a) => a.estado === 'pendiente');
   const puedeProponer = rel === 'trabajadorAceptado' && s.estado === 'en_curso' && !pendiente;
   if (!s.ajustes.length && !puedeProponer) return null;
-  const tope = s.trabajadorAceptado ? s.trabajadorAceptado.monto * 1.5 : 0;
+  const porcentaje = s.oficio.topeAjuste ?? 0.5;
+  const tope = s.trabajadorAceptado ? Math.round(s.trabajadorAceptado.monto * (1 + porcentaje) * 100) / 100 : 0;
   const ETIQUETA = { pendiente: 'Esperando al cliente', aceptado: 'Aceptado', rechazado: 'Rechazado' };
 
   return (
@@ -308,7 +309,7 @@ function Ajustes({ s, rel, ocupado, onProponer, onDecidir }) {
           const d = Object.fromEntries(new FormData(e.currentTarget));
           onProponer({ montoPropuesto: Number(d.montoPropuesto), motivo: d.motivo.trim() });
         }}>
-          <p className="suave pequeno">Si el trabajo resultó más grande, propón el nuevo monto. Máximo {pesos(tope)} (+50 % de lo cotizado); si necesitas más, el cliente debe abrir una solicitud nueva.</p>
+          <p className="suave pequeno">Si el trabajo resultó más grande, propón el nuevo monto. Máximo {pesos(tope)} (+{Math.round(porcentaje * 100)} % de lo cotizado en {s.oficio.nombre}); si necesitas más, el cliente debe abrir una solicitud nueva.</p>
           <Campo etiqueta="Nuevo monto (MXN)">
             <input name="montoPropuesto" type="number" inputMode="decimal" min={s.montoFinal + 0.01} max={tope} step="0.01" required />
           </Campo>

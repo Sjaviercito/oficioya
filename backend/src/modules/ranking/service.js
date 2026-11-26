@@ -10,6 +10,7 @@ async function recalcularTrabajador(trabajadorId, db = prisma, ahora = new Date(
       solicitudesAceptadas: true,
       cancelacionesAtribuibles: true,
       trabajosCompletados: true,
+      trabajosConAjuste: true,
       resenas: { select: { estrellas: true, creadaEn: true } },
     },
   });

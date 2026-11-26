@@ -8,3 +8,11 @@ Options -Indexes
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule . /index.html [L]
 </IfModule>
+
+# v1.1-4: política de seguridad de contenido. Solo se ejecuta código propio y solo se habla con la
+# API de OficioYa: limita lo que un script inyectado (XSS) podría hacer con la sesión.
+<IfModule mod_headers.c>
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self' https://oficioya-api.onrender.com; img-src 'self' data: blob: https://oficioya-api.onrender.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Equipo / Autor(es) | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
-| Versión | 1.0 |
+| Versión | 1.1 |
 | Fecha | 2026-11-25 |
 | Documento de origen | [01-vision-alcance_OficioYa_Santiago.md](./01-vision-alcance_OficioYa_Santiago.md) |
 | Estado | Vigente (entrega final) |
@@ -33,13 +33,15 @@ OficioYa es una aplicación web responsiva, pensada para el celular, que conecta
 | RF-08 | Registro de cancelaciones | Must | Sí |
 | RF-09 | Reseña de trabajo completado | Must | Sí |
 | RF-10 | Recálculo del ranking | Must | Sí |
-| RF-11 | Notificaciones | Should | No (pendiente conocido) |
-| RF-12 | Respuesta pública a reseñas | Should | No (pendiente conocido) |
-| RF-13 | Reportes y suspensión | Should | No (pendiente conocido) |
+| RF-11 | Avisos dentro de la app | Should | Sí (v1.0; avisos por oficio y zona en v1.1) |
+| RF-12 | Respuesta pública a reseñas | Should | Sí (v1.0; visible en el perfil público en v1.1) |
+| RF-13 | Reportes y suspensión | Should | Sí (v1.0; reactivación en v1.1) |
 | RF-14 | Panel de estadísticas del trabajador | Could | Sí (v1.0) |
 | RF-15 | Historial de solicitudes del cliente | Could | Sí (adelantado en el MVP) |
 | RF-16 | Ajuste de precio con aprobación del cliente | Must | Sí (v1.0, cambio solicitado por el usuario) |
 | RF-17 | Porcentaje de trabajos con ajuste en el perfil del trabajador | Should | Sí (v1.0) |
+| RF-18 | Perfil público del trabajador con reseñas y respuestas | Should | Sí (v1.1) |
+| RF-19 | Tope de ajuste configurable por oficio (administrador) | Could | Sí (v1.1) |
 
 > Prioridad: **Must** (sin esto el MVP no sirve), **Should** (importante, pero hay alternativa), **Could** (deseable).
 
@@ -276,6 +278,17 @@ Cualquier transición que no aparezca en esta tabla responde `409` y no modifica
 - **Momentos de recálculo:** al registrar una reseña, al completar una solicitud, al registrar una cancelación atribuible y en el proceso diario de las 03:00 (ADR-06).
 
 ---
+
+### 3.6 Cambios de la v1.1
+
+- **Ranking (sección 3.4) — fórmula nueva:** `puntuación = calificación ponderada × (1 − tasa de cancelación) × (1 − 0.10 × proporción de trabajos con ajuste)`. Con 0 ajustes la puntuación es idéntica a la v1.0 (CA-10.1 sigue dando 3.49). Penalización máxima: 10 %.
+- **Tope de ajuste por oficio (RF-19):** `oficio.tope_ajuste` entre 0.10 y 1.00 (por omisión 0.50). Lo cambia solo el administrador con `PATCH /admin/oficios/:id { topeAjuste }` (400 fuera de rango, 403 no admin). La regla de la sección 3.5 usa el tope del oficio de la solicitud.
+- **Perfil público (RF-18):** `GET /workers/:id/public` para cualquier usuario con sesión; incluye reseñas con respuesta, tasa de cancelación y % con ajuste; nunca correo ni dirección; trabajador suspendido o inexistente → 404.
+- **Avisos por oficio y zona (RF-11):** al publicar una solicitud se avisa a los trabajadores aprobados y no suspendidos de ese oficio y zona.
+- **Reactivación (RF-13):** `GET /admin/workers/suspended` y `PATCH /admin/workers/:id/reinstate { motivo }` (409 si no está suspendido).
+- **Seguridad:** máximo 5 intentos fallidos de inicio de sesión por correo e IP por minuto → 429. En el frontend, política de seguridad de contenido (CSP) en `.htaccess` que solo permite scripts propios y conexiones a la API.
+- **ADR-05 revisado:** los archivos se guardan en la tabla `archivo` de PostgreSQL (las identificaciones cifradas y marcadas como privadas). Razón: el disco del plan gratuito de Render se borra al reiniciar. Consecuencia: ocupa espacio de la base (límite de 1 GB en Neon gratuito; 5 MB por archivo).
+- **Descartado:** refresh token en cookie `HttpOnly`. Frontend y API están en dominios distintos y los navegadores bloquean cookies entre sitios; se mitiga el riesgo de XSS con la CSP.
 
 ### 3.5 Regla de negocio: ajuste de precio (v1.0, RF-16 y RF-17)
 
@@ -626,6 +639,17 @@ Etiquetas: **[Regla]** verifica la regla de negocio del ranking; **[Interacción
 - **When** se consulta su perfil
 - **Then** `porcentajeConAjuste` es `null` y la interfaz muestra "—" en lugar de 0 %
 
+### Criterios de la v1.1
+
+**CA-10.6 [Regla]** — **Given** 4 trabajos completados con 4 reseñas de 4★, sin cancelaciones y 1 con ajuste, **When** se recalcula, **Then** la puntuación es 3.90 (4 × (1 − 0.1 × 0.25)).
+**CA-10.7 [Regla]** — **Given** el trabajador B del CA-10.1 sin ajustes, **When** se recalcula con la fórmula v1.1, **Then** sigue en 3.49.
+**CA-11.2 [Interacción M2→M1]** — **Given** un plomero verificado de Centro y un electricista de Centro, **When** se publica una solicitud de Plomería en Centro, **Then** solo el plomero recibe el aviso.
+**CA-13.2** — **Given** un trabajador suspendido, **When** el admin lo reactiva con motivo, **Then** vuelve a aparecer en búsquedas; reactivarlo de nuevo → 409.
+**CA-18.1** — **Given** un trabajador con una reseña respondida, **When** un cliente abre su perfil público, **Then** ve la reseña con la respuesta y la respuesta no contiene correos; un id inexistente → 404.
+**CA-19.1 [Regla]** — **Given** Plomería con tope de 30 % y una cotización de $1,000, **When** el trabajador propone $1,400, **Then** 422 mencionando 30 %; con $1,300 se crea el ajuste. Tope de 150 % → 400; un cliente → 403.
+**CA-SEG.1** — **Given** 5 intentos fallidos en un minuto, **When** se intenta el sexto, **Then** 429.
+**CA-ARCH.1** — **Given** una foto de perfil y una INE guardadas, **When** se piden por `/uploads`, **Then** la foto responde 200 y la INE 404.
+
 ### RF-14 — Panel del trabajador (v1.0)
 
 **CA-14.1 (camino feliz)**
@@ -755,5 +779,6 @@ REGLAS
 |---|---|---|---|
 | 0.1 | 2026-09-22 | Versión inicial | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
 | 0.3 | 2026-11-04 | Ajustes de la construcción del MVP: despliegue frontend en subdominio + API en Render, Node 22, Prisma sin motor binario, tabla `refresh_token`, endpoints de apoyo a la interfaz (ver trazabilidad de la Etapa 3) | Equipo 6 |
+| 1.1 | 2026-11-26 | Mejoras: archivos persistentes en la base (ADR-05 revisado), perfil público (RF-18), tope por oficio (RF-19), ajustes con peso de 10 % en el ranking, avisos por zona, reactivación, límite de intentos de login y CSP | Equipo 6 |
 | 1.0 | 2026-11-25 | Cambio solicitado por el usuario: ajuste de precio con aprobación del cliente (RF-16, RF-17, sección 3.5, CA-16.x y CA-17.x); RF-14 entra al alcance; RF-11, RF-12 y RF-13 quedan como pendientes conocidos | Equipo 6 |
 | 0.2 | 2026-10-06 | ADR reescritos (incluye API-first para la Etapa 6) y stack definido; modelo de datos completo; endpoints de cancelación, identificación y transiciones; máquina de estados; criterios con datos concretos; RNF alineados con la Etapa 1 | Javier Alejandro Santiago Salinas |

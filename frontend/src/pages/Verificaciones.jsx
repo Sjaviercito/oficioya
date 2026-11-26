@@ -17,6 +17,8 @@ export default function Verificaciones() {
     <>
       <h1>Verificaciones</h1>
       <Reportes />
+      <Suspendidos />
+      <Topes />
       <Aviso tipo={aviso.tipo}>{aviso.texto}</Aviso>
       {actual ? (
         <Revision
@@ -120,6 +122,68 @@ function Reportes() {
               <button className="boton peligro" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'suspender' }).then(cargar)}>Suspender trabajador</button>
               <button className="boton secundario" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'descartar' }).then(cargar)}>Descartar</button>
             </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// v1.1-7: reactivar trabajadores suspendidos.
+function Suspendidos() {
+  const [lista, setLista] = useState([]);
+  const [msg, setMsg] = useState({ tipo: '', texto: '' });
+  const cargar = useCallback(() => { api.get('/admin/workers/suspended').then(setLista).catch(() => {}); }, []);
+  useEffect(cargar, [cargar]);
+  if (!lista.length) return null;
+  return (
+    <section>
+      <h2>Trabajadores suspendidos</h2>
+      <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>
+      <ul className="lista">
+        {lista.map((t) => (
+          <li key={t.trabajadorId} className="fila">
+            <div className="fila-titulo"><span>{t.nombre}</span><span className="estado cancelada">Suspendido</span></div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const motivo = new FormData(e.currentTarget).get('motivo').trim();
+              api.patch(`/admin/workers/${t.trabajadorId}/reinstate`, { motivo })
+                .then(() => { setMsg({ tipo: 'ok', texto: `${t.nombre} fue reactivado.` }); cargar(); })
+                .catch((err) => setMsg({ tipo: 'error', texto: err.message }));
+            }}>
+              <Campo etiqueta="Motivo de la reactivación" ayuda="Mínimo 10 caracteres."><textarea name="motivo" required minLength={10} maxLength={300} /></Campo>
+              <button className="boton secundario">Reactivar</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// v1.1-5: tope de ajuste de precio por oficio.
+function Topes() {
+  const [oficios, setOficios] = useState([]);
+  const [msg, setMsg] = useState({ tipo: '', texto: '' });
+  useEffect(() => { api.get('/catalog').then((c) => setOficios(c.oficios)).catch(() => {}); }, []);
+  if (!oficios.length) return null;
+  return (
+    <section>
+      <h2>Tope de ajuste de precio por oficio</h2>
+      <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>
+      <ul className="lista">
+        {oficios.map((o) => (
+          <li key={o.id} className="fila">
+            <form style={{ display: 'flex', gap: '0.5rem', alignItems: 'end' }} onSubmit={(e) => {
+              e.preventDefault();
+              const pct = Number(new FormData(e.currentTarget).get('pct'));
+              api.patch(`/admin/oficios/${o.id}`, { topeAjuste: pct / 100 })
+                .then(() => setMsg({ tipo: 'ok', texto: `Tope de ${o.nombre}: ${pct} %.` }))
+                .catch((err) => setMsg({ tipo: 'error', texto: err.message }));
+            }}>
+              <Campo etiqueta={`${o.nombre} (%)`}><input name="pct" type="number" min="10" max="100" step="1" required defaultValue={Math.round(o.topeAjuste * 100)} /></Campo>
+              <button className="boton secundario">Guardar</button>
+            </form>
           </li>
         ))}
       </ul>
