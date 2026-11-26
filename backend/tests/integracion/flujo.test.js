@@ -382,6 +382,84 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     });
   });
 
+  describe('RF-16 / RF-17 Ajuste de precio con aprobación del cliente', () => {
+    let sol, ajusteId;
+    async function enCurso(monto) {
+      const id = await crearSolicitud('luis');
+      const c = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('carlos')).send({ monto, tiempoEstimadoHoras: 2 });
+      await request(app).post(`/api/v1/requests/${id}/accept`).set(auth('luis')).send({ cotizacionId: c.body.cotizacion.id }).expect(200);
+      return id;
+    }
+    test('CA-16.5 proponer con la solicitud "aceptada" → 409', async () => {
+      sol = await enCurso(800);
+      await request(app).post(`/api/v1/requests/${sol}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 1000, motivo: 'Material adicional para la pared' }).expect(409);
+      await request(app).post(`/api/v1/requests/${sol}/start`).set(auth('carlos')).expect(200);
+    });
+    test('CA-16.3 propuesta de $1,300 (más del 50 %) → 422', async () => {
+      const r = await request(app).post(`/api/v1/requests/${sol}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 1300, motivo: 'Material adicional para la pared' });
+      expect(r.status).toBe(422);
+    });
+    test('CA-16.7 un trabajador que no es el aceptado → 403', async () => {
+      await request(app).post(`/api/v1/requests/${sol}/adjustments`).set(auth('arturo')).send({ montoPropuesto: 1000, motivo: 'Material adicional para la pared' }).expect(403);
+    });
+    test('el trabajador propone $1,000 → 201 con ajuste pendiente; la solicitud sigue "en_curso"', async () => {
+      const r = await request(app).post(`/api/v1/requests/${sol}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 1000, motivo: 'Material adicional para la pared' });
+      expect(r.status).toBe(201);
+      expect(r.body.solicitud.estado).toBe('en_curso');
+      expect(r.body.solicitud.montoFinal).toBe(800);
+      ajusteId = r.body.solicitud.ajustes[0].id;
+    });
+    test('CA-16.6 segunda propuesta con una pendiente → 409', async () => {
+      await request(app).post(`/api/v1/requests/${sol}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 1100, motivo: 'Otro material extra necesario' }).expect(409);
+    });
+    test('CA-16.8 confirmar "terminado" con el ajuste pendiente → 409', async () => {
+      const r = await request(app).post(`/api/v1/requests/${sol}/complete`).set(auth('luis'));
+      expect(r.status).toBe(409);
+      expect(r.body.error.code).toBe('AJUSTE_PENDIENTE');
+    });
+    test('CA-16.7 un cliente ajeno responde el ajuste → 403', async () => {
+      await request(app).patch(`/api/v1/requests/${sol}/adjustments/${ajusteId}`).set(auth('ana')).send({ decision: 'aceptar' }).expect(403);
+    });
+    test('CA-16.1 el cliente acepta: monto final $1,000 e historial $800 → $1,000', async () => {
+      const r = await request(app).patch(`/api/v1/requests/${sol}/adjustments/${ajusteId}`).set(auth('luis')).send({ decision: 'aceptar' });
+      expect(r.status).toBe(200);
+      expect(r.body.solicitud.montoFinal).toBe(1000);
+      expect(r.body.solicitud.ajustes[0]).toMatchObject({ montoAnterior: 800, montoPropuesto: 1000, estado: 'aceptado' });
+    });
+    test('responder dos veces el mismo ajuste → 409', async () => {
+      await request(app).patch(`/api/v1/requests/${sol}/adjustments/${ajusteId}`).set(auth('luis')).send({ decision: 'rechazar' }).expect(409);
+    });
+    test('CA-17.1 al completar, el perfil cuenta el trabajo con ajuste y el ranking no cambia de fórmula', async () => {
+      const antes = await prisma.perfilTrabajador.findUnique({ where: { id: S.carlos.perfilId } });
+      await request(app).post(`/api/v1/requests/${sol}/complete`).set(auth('luis')).expect(200);
+      const p = await prisma.perfilTrabajador.findUnique({ where: { id: S.carlos.perfilId } });
+      expect(p.trabajosConAjuste).toBe(antes.trabajosConAjuste + 1);
+      expect(p.cancelacionesAtribuibles).toBe(antes.cancelacionesAtribuibles);
+      const perfil = await request(app).get('/api/v1/workers/me/profile').set(auth('carlos'));
+      expect(perfil.body.perfil.porcentajeConAjuste).toBe(Math.round((p.trabajosConAjuste / p.trabajosCompletados) * 100));
+    });
+    test('CA-16.2 si el cliente rechaza, el trabajo sigue al precio original sin penalizar', async () => {
+      const id = await enCurso(500);
+      await request(app).post(`/api/v1/requests/${id}/start`).set(auth('carlos')).expect(200);
+      const prop = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 600, motivo: 'Se necesita una pieza extra' });
+      const antes = await prisma.perfilTrabajador.findUnique({ where: { id: S.carlos.perfilId } });
+      const r = await request(app).patch(`/api/v1/requests/${id}/adjustments/${prop.body.solicitud.ajustes[0].id}`).set(auth('luis')).send({ decision: 'rechazar' });
+      expect(r.body.solicitud.estado).toBe('en_curso');
+      expect(r.body.solicitud.montoFinal).toBe(500);
+      const p = await prisma.perfilTrabajador.findUnique({ where: { id: S.carlos.perfilId } });
+      expect(p.cancelacionesAtribuibles).toBe(antes.cancelacionesAtribuibles);
+      expect(Number(p.tasaCancelacion)).toBe(Number(antes.tasaCancelacion));
+    });
+    test('CA-16.9 cancelar con un ajuste pendiente lo deja rechazado', async () => {
+      const id = await enCurso(500);
+      await request(app).post(`/api/v1/requests/${id}/start`).set(auth('carlos')).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('carlos')).send({ montoPropuesto: 600, motivo: 'Se necesita una pieza extra' }).expect(201);
+      await request(app).post(`/api/v1/requests/${id}/cancel`).set(auth('luis')).send({ motivo: 'Ya no lo necesito' }).expect(200);
+      const a = await prisma.ajustePrecio.findFirst({ where: { solicitudId: id } });
+      expect(a.estado).toBe('rechazado');
+    });
+  });
+
   describe('RNF-02 Sesiones (ADR-04)', () => {
     test('el refresh token rota: el usado ya no sirve', async () => {
       const r = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: S.ana.refresh });

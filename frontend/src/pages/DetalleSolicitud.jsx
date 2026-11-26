@@ -68,7 +68,10 @@ export default function DetalleSolicitud() {
         <div className="dato"><dt>Para el</dt><dd>{fecha(s.fechaDeseada)}</dd></div>
         {!esCliente && <div className="dato"><dt>Cliente</dt><dd>{s.cliente.nombre}</dd></div>}
         {s.trabajadorAceptado && (
-          <div className="dato"><dt>Trabajador</dt><dd>{s.trabajadorAceptado.nombre} · {pesos(s.trabajadorAceptado.monto)}, {s.trabajadorAceptado.tiempoEstimadoHoras} h</dd></div>
+          <div className="dato"><dt>Trabajador</dt><dd>{s.trabajadorAceptado.nombre} · {s.trabajadorAceptado.tiempoEstimadoHoras} h estimadas</dd></div>
+        )}
+        {s.montoFinal !== null && (
+          <div className="dato"><dt>Monto</dt><dd><strong>{pesos(s.montoFinal)}</strong>{s.montoFinal !== s.trabajadorAceptado.monto && <span className="suave"> (cotizado: {pesos(s.trabajadorAceptado.monto)})</span>}</dd></div>
         )}
       </dl>
       <p>{s.descripcion}</p>
@@ -114,6 +117,11 @@ export default function DetalleSolicitud() {
         </section>
       )}
 
+      <Ajustes s={s} rel={rel} ocupado={ocupado}
+        onProponer={(datos) => accion(() => api.post(`/requests/${id}/adjustments`, datos), 'Ajuste enviado. El cliente debe aceptarlo o rechazarlo.')}
+        onDecidir={(ajusteId, decision) => accion(() => api.patch(`/requests/${id}/adjustments/${ajusteId}`, { decision }),
+          decision === 'aceptar' ? 'Aceptaste el ajuste. El monto quedó actualizado.' : 'Rechazaste el ajuste. El trabajo sigue al precio original.')} />
+
       {esCliente && s.estado === 'en_curso' && (
         <div className="acciones">
           <button className="boton accion ancho" disabled={ocupado}
@@ -124,7 +132,7 @@ export default function DetalleSolicitud() {
       )}
 
       {esCliente && s.estado === 'completada' && !s.resena && s.diasRestantesParaResena > 0 && (
-        <FormularioResena dias={s.diasRestantesParaResena} ocupado={ocupado}
+        <FormularioResena dias={s.diasRestantesParaResena} monto={s.montoFinal} ocupado={ocupado}
           onEnviar={(datos) => accion(() => api.post(`/requests/${id}/review`, datos), 'Gracias, tu calificación ya cuenta para su reputación.')} />
       )}
       {s.resena && (
@@ -183,12 +191,12 @@ function FormularioCotizacion({ onEnviar, ocupado }) {
   );
 }
 
-function FormularioResena({ onEnviar, ocupado, dias }) {
+function FormularioResena({ onEnviar, ocupado, dias, monto }) {
   const [estrellas, setEstrellas] = useState(0);
   return (
     <section>
       <h2>Califica el trabajo</h2>
-      <p className="suave pequeno">Te quedan {dias} {dias === 1 ? 'día' : 'días'} para calificar.</p>
+      <p className="suave pequeno">Monto final del trabajo: {pesos(monto)}. Te quedan {dias} {dias === 1 ? 'día' : 'días'} para calificar.</p>
       <form onSubmit={(e) => {
         e.preventDefault();
         const comentario = new FormData(e.currentTarget).get('comentario').trim();
@@ -244,6 +252,56 @@ function FormularioCancelacion({ onEnviar, ocupado, esTrabajador }) {
           <button type="button" className="boton secundario" onClick={() => setAbierto(false)}>No cancelar</button>
         </div>
       </form>
+    </section>
+  );
+}
+
+// RF-16: historial de ajustes de precio, propuesta del trabajador y respuesta del cliente.
+function Ajustes({ s, rel, ocupado, onProponer, onDecidir }) {
+  const pendiente = s.ajustes.find((a) => a.estado === 'pendiente');
+  const puedeProponer = rel === 'trabajadorAceptado' && s.estado === 'en_curso' && !pendiente;
+  if (!s.ajustes.length && !puedeProponer) return null;
+  const tope = s.trabajadorAceptado ? s.trabajadorAceptado.monto * 1.5 : 0;
+  const ETIQUETA = { pendiente: 'Esperando al cliente', aceptado: 'Aceptado', rechazado: 'Rechazado' };
+
+  return (
+    <section>
+      <h2>Ajustes de precio</h2>
+      {s.ajustes.length > 0 && (
+        <ul className="lista">
+          {s.ajustes.map((a) => (
+            <li key={a.id} className="fila">
+              <div className="fila-titulo">
+                <span>{pesos(a.montoAnterior)} → {pesos(a.montoPropuesto)}</span>
+                <span className={`estado ${a.estado === 'aceptado' ? 'completada' : a.estado === 'rechazado' ? 'cancelada' : 'en_curso'}`}>{ETIQUETA[a.estado]}</span>
+              </div>
+              <p className="suave pequeno" style={{ margin: '0.25rem 0 0' }}>{a.motivo} · {new Date(a.creadoEn).toLocaleString('es-MX')}</p>
+              {a.estado === 'pendiente' && rel === 'clienteDueno' && (
+                <div className="acciones">
+                  <button className="boton accion" disabled={ocupado} onClick={() => onDecidir(a.id, 'aceptar')}>Aceptar {pesos(a.montoPropuesto)}</button>
+                  <button className="boton secundario" disabled={ocupado} onClick={() => onDecidir(a.id, 'rechazar')}>Rechazar y seguir en {pesos(a.montoAnterior)}</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {puedeProponer && (
+        <form style={{ marginTop: '1rem' }} onSubmit={(e) => {
+          e.preventDefault();
+          const d = Object.fromEntries(new FormData(e.currentTarget));
+          onProponer({ montoPropuesto: Number(d.montoPropuesto), motivo: d.motivo.trim() });
+        }}>
+          <p className="suave pequeno">Si el trabajo resultó más grande, propón el nuevo monto. Máximo {pesos(tope)} (+50 % de lo cotizado); si necesitas más, el cliente debe abrir una solicitud nueva.</p>
+          <Campo etiqueta="Nuevo monto (MXN)">
+            <input name="montoPropuesto" type="number" inputMode="decimal" min={s.montoFinal + 0.01} max={tope} step="0.01" required />
+          </Campo>
+          <Campo etiqueta="Motivo" ayuda="Mínimo 10 caracteres. El cliente lo verá antes de decidir.">
+            <textarea name="motivo" required minLength={10} maxLength={300} />
+          </Campo>
+          <button className="boton ancho" disabled={ocupado}>Proponer ajuste</button>
+        </form>
+      )}
     </section>
   );
 }

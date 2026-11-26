@@ -86,8 +86,10 @@ async function historial(clienteId, trabajadorId, oficio, zona, { final, diasAtr
 }
 
 async function main() {
-  if ((await prisma.usuario.count()) > 0) {
-    console.log('La base ya tiene usuarios; el seed no se vuelve a ejecutar.');
+  // Idempotente: si ya existen las cuentas de prueba no hace nada; si faltan, las crea aunque
+  // haya usuarios reales registrados (H-04 de la Etapa 4).
+  if (await prisma.usuario.findUnique({ where: { email: 'admin@oficioya.test' } })) {
+    console.log('Las cuentas de prueba ya existen; el seed no se vuelve a ejecutar.');
     return;
   }
   const hash = await bcrypt.hash(PASSWORD_DEMO, 10);

@@ -9,6 +9,7 @@ const { validarTransicion, ESTADOS_ABIERTOS_A_COTIZACION } = require('./estados'
 const ranking = require('../ranking/service');
 
 const PLAZO_RESENA_DIAS = 30;
+const { montoVigente } = require('../adjustments/reglas');
 
 const INCLUDE_DETALLE = {
   oficio: true,
@@ -19,6 +20,7 @@ const INCLUDE_DETALLE = {
   cotizacionAceptada: { include: { trabajador: { include: { usuario: { select: { nombre: true } } } } } },
   cancelacion: { select: { rolQueCancela: true, motivo: true, detalle: true, fecha: true, atribuibleAlTrabajador: true } },
   resena: { select: { estrellas: true, comentario: true, creadaEn: true } },
+  ajustes: { orderBy: { creadoEn: 'asc' } },
 };
 
 const fechaISO = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
@@ -75,6 +77,17 @@ function serializar(s, relacion, perfil) {
           tiempoEstimadoHoras: s.cotizacionAceptada.tiempoEstimadoHoras,
         }
       : null,
+    // RF-16: monto vigente (cotización o último ajuste aceptado) e historial de ajustes.
+    montoFinal: s.cotizacionAceptada ? montoVigente(s) : null,
+    ajustes: (s.ajustes || []).map((a) => ({
+      id: a.id,
+      montoAnterior: Number(a.montoAnterior),
+      montoPropuesto: Number(a.montoPropuesto),
+      motivo: a.motivo,
+      estado: a.estado,
+      creadoEn: a.creadoEn,
+      resueltoEn: a.resueltoEn,
+    })),
     cancelacion: s.cancelacion,
     resena: s.resena,
     diasRestantesParaResena: s.resena ? null : plazoResena,
@@ -219,9 +232,18 @@ async function completar(usuarioId, solicitudId) {
   await prisma.$transaction(async (tx) => {
     const s = await cargar(solicitudId, tx);
     if (s.clienteId !== usuarioId) throw errores.forbidden('Solo quien publicó la solicitud puede confirmar que terminó');
-    await cambiarEstado(tx, s, validarTransicion('completar', s.estado), { completadaEn: new Date() });
+    const nuevo = validarTransicion('completar', s.estado);
+    // CA-16.8: no se confirma el trabajo con un ajuste sin responder.
+    if (s.ajustes.some((a) => a.estado === 'pendiente')) {
+      throw errores.conflict('Responde el ajuste de precio pendiente antes de confirmar que el trabajo terminó', 'AJUSTE_PENDIENTE');
+    }
+    await cambiarEstado(tx, s, nuevo, { completadaEn: new Date() });
     const trabajadorId = s.cotizacionAceptada.trabajadorId;
-    await tx.perfilTrabajador.update({ where: { id: trabajadorId }, data: { trabajosCompletados: { increment: 1 } } });
+    const conAjuste = s.ajustes.some((a) => a.estado === 'aceptado');
+    await tx.perfilTrabajador.update({
+      where: { id: trabajadorId },
+      data: { trabajosCompletados: { increment: 1 }, ...(conAjuste ? { trabajosConAjuste: { increment: 1 } } : {}) },
+    });
     await ranking.recalcularTrabajador(trabajadorId, tx);
   });
   return detalle(solicitudId, { id: usuarioId, rol: 'cliente' });
@@ -261,6 +283,8 @@ async function cancelar(usuario, solicitudId, { motivo, detalle: detalleTexto })
         atribuibleAlTrabajador: trabajadorAtribuible !== null,
       },
     });
+    // CA-16.9: un ajuste sin responder queda rechazado al cancelar.
+    await tx.ajustePrecio.updateMany({ where: { solicitudId: s.id, estado: 'pendiente' }, data: { estado: 'rechazado', resueltoEn: new Date() } });
     // CA-08.3: las cotizaciones pendientes quedan rechazadas.
     await tx.cotizacion.updateMany({ where: { solicitudId: s.id, estado: 'pendiente' }, data: { estado: 'rechazada' } });
 

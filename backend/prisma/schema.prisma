@@ -41,6 +41,12 @@ enum EstadoCotizacion {
   rechazada
 }
 
+enum EstadoAjuste {
+  pendiente
+  aceptado
+  rechazado
+}
+
 enum RolCancelacion {
   cliente
   trabajador
@@ -88,6 +94,8 @@ model PerfilTrabajador {
   solicitudesAceptadas     Int                @default(0) @map("solicitudes_aceptadas")
   cancelacionesAtribuibles Int                @default(0) @map("cancelaciones_atribuibles")
   trabajosCompletados      Int                @default(0) @map("trabajos_completados")
+  // Etapa 4: trabajos completados que terminaron con un ajuste de precio aceptado (transparencia, no afecta el ranking).
+  trabajosConAjuste        Int                @default(0) @map("trabajos_con_ajuste")
   calificacionPonderada    Decimal?           @map("calificacion_ponderada") @db.Decimal(6, 4)
   tasaCancelacion          Decimal            @default(0) @map("tasa_cancelacion") @db.Decimal(6, 4)
   puntuacionRanking        Decimal?           @map("puntuacion_ranking") @db.Decimal(6, 4)
@@ -180,6 +188,7 @@ model Solicitud {
   cotizacionAceptada Cotizacion?      @relation("CotizacionAceptada", fields: [cotizacionAceptadaId], references: [id])
   cancelacion        Cancelacion?
   resena             Resena?
+  ajustes            AjustePrecio[]
 
   @@index([oficioId, zonaId, estado])
   @@map("solicitud")
@@ -242,4 +251,22 @@ model Resena {
   trabajador PerfilTrabajador @relation(fields: [trabajadorId], references: [id])
 
   @@map("resena")
+}
+
+// Etapa 4 (cambio solicitado por el usuario): ajuste de precio con aprobación del cliente.
+// Es un registro aparte: no agrega estados a la máquina de estados de la solicitud.
+model AjustePrecio {
+  id             String       @id @default(uuid()) @db.Uuid
+  solicitudId    String       @map("solicitud_id") @db.Uuid
+  montoAnterior  Decimal      @map("monto_anterior") @db.Decimal(10, 2)
+  montoPropuesto Decimal      @map("monto_propuesto") @db.Decimal(10, 2)
+  motivo         String
+  estado         EstadoAjuste @default(pendiente)
+  creadoEn       DateTime     @default(now()) @map("creado_en")
+  resueltoEn     DateTime?    @map("resuelto_en")
+
+  solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+
+  @@index([solicitudId, estado])
+  @@map("ajuste_precio")
 }

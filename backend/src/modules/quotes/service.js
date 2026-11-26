@@ -65,6 +65,7 @@ async function listar(usuarioId, solicitudId) {
       fotoUrl: c.trabajador.fotoUrl,
       puntuacionRanking: c.trabajador.puntuacionRanking === null ? null : Math.round(Number(c.trabajador.puntuacionRanking) * 100) / 100,
       trabajosCompletados: c.trabajador.trabajosCompletados,
+      porcentajeConAjuste: c.trabajador.trabajosCompletados > 0 ? Math.round((c.trabajador.trabajosConAjuste / c.trabajador.trabajosCompletados) * 100) : null,
       esNuevo: c.trabajador.puntuacionRanking === null,
     },
   }));

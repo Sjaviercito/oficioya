@@ -86,8 +86,11 @@ async function llamar(ruta, { method = 'GET', body, form, raw = false } = {}, re
   }
   if (raw && r.ok) return r;
   if (r.status === 204) return null;
-  const datos = await r.json().catch(() => null);
+  const esJson = (r.headers.get('content-type') || '').includes('application/json');
+  const datos = esJson ? await r.json().catch(() => null) : null;
   if (!r.ok) throw new ApiError(r.status, datos?.error?.message || 'Ocurrió un error, intenta de nuevo');
+  // Si el servidor respondió algo que no es la API (por ejemplo una página HTML), no se procesa.
+  if (!esJson || datos === null) throw new ApiError(r.status, 'No se pudo conectar con el servidor de OficioYa. Intenta de nuevo en un minuto.');
   return datos;
 }
 

@@ -64,9 +64,14 @@ export default function MiPerfil() {
     <>
       <h1>Mi perfil</h1>
       <Aviso tipo={aviso.tipo}>{aviso.texto}</Aviso>
-      {!perfil.esNuevo && (
-        <p>Tu reputación: <strong>{perfil.puntuacionRanking.toFixed(2)}</strong> de 5 · {perfil.trabajosCompletados} trabajos</p>
-      )}
+      {/* RF-14: panel del trabajador */}
+      <dl>
+        <div className="dato"><dt>Reputación</dt><dd>{perfil.esNuevo ? 'Nuevo (necesitas 3 trabajos con calificación)' : <><strong>{perfil.puntuacionRanking.toFixed(2)}</strong> de 5</>}</dd></div>
+        <div className="dato"><dt>Calificación</dt><dd>{perfil.calificacionPonderada === null ? '—' : `${perfil.calificacionPonderada.toFixed(2)} de 5 (ponderada por antigüedad)`}</dd></div>
+        <div className="dato"><dt>Trabajos completados</dt><dd>{perfil.trabajosCompletados}</dd></div>
+        <div className="dato"><dt>Tasa de cancelación</dt><dd>{Math.round(perfil.tasaCancelacion * 100)} %</dd></div>
+        <div className="dato"><dt>Con ajuste de precio</dt><dd>{perfil.porcentajeConAjuste === null ? '—' : `${perfil.porcentajeConAjuste} %`}</dd></div>
+      </dl>
 
       <form onSubmit={guardarPerfil} key={`${perfil.id}-${oficios.length}-${zonas.length}`}>
         <fieldset>

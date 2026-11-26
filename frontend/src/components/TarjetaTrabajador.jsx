@@ -13,6 +13,9 @@ export default function TarjetaTrabajador({ t, extra }) {
           <span className="sello">✓ Verificado</span>{' '}
           {t.trabajosCompletados} {t.trabajosCompletados === 1 ? 'trabajo' : 'trabajos'}
         </div>
+        {t.porcentajeConAjuste !== null && t.porcentajeConAjuste !== undefined && (
+          <div className="pequeno suave">{t.porcentajeConAjuste} % de sus trabajos tuvieron ajuste de precio</div>
+        )}
         {extra}
       </div>
       <div className="puntuacion">

@@ -6,6 +6,8 @@ const { validarImagen } = require('../../shared/middleware/upload');
 const { compararParaBusqueda, redondear2 } = require('../ranking/calculo');
 
 const num = (d) => (d === null || d === undefined ? null : Number(d));
+// RF-17: porcentaje de trabajos completados que terminaron con ajuste aceptado (solo transparencia).
+const pctAjuste = (p) => (p.trabajosCompletados > 0 ? Math.round((p.trabajosConAjuste / p.trabajosCompletados) * 100) : null);
 
 async function perfilDeUsuario(usuarioId) {
   const perfil = await prisma.perfilTrabajador.findUnique({
@@ -26,6 +28,7 @@ function serializarPerfil(p) {
     oficios: p.oficios.map((o) => o.oficio),
     zonas: p.zonas.map((z) => z.zona),
     trabajosCompletados: p.trabajosCompletados,
+    porcentajeConAjuste: pctAjuste(p),
     puntuacionRanking: redondear2(num(p.puntuacionRanking)),
     calificacionPonderada: redondear2(num(p.calificacionPonderada)),
     tasaCancelacion: redondear2(num(p.tasaCancelacion)),
@@ -113,6 +116,7 @@ async function buscar({ oficioId, zonaId }) {
       oficios: p.oficios.map((o) => o.oficio.nombre),
       puntuacionRanking: num(p.puntuacionRanking),
       trabajosCompletados: p.trabajosCompletados,
+      porcentajeConAjuste: pctAjuste(p),
       verificadoEn: p.verificadoEn,
     }))
     .sort(compararParaBusqueda)
@@ -123,4 +127,4 @@ async function buscar({ oficioId, zonaId }) {
     }));
 }
 
-module.exports = { obtenerMiPerfil, guardarPerfil, enviarIdentificacion, buscar, serializarPerfil };
+module.exports = { pctAjuste, obtenerMiPerfil, guardarPerfil, enviarIdentificacion, buscar, serializarPerfil };
