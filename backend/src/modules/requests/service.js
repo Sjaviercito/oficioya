@@ -133,6 +133,12 @@ async function crear(clienteId, datos, fotos = []) {
     },
     include: INCLUDE_DETALLE,
   });
+  // Mejora v1.1-2: aviso a trabajadores verificados (no suspendidos) del oficio y la zona.
+  const destinatarios = await prisma.perfilTrabajador.findMany({
+    where: { estadoVerificacion: 'aprobado', suspendido: false, oficios: { some: { oficioId: datos.oficioId } }, zonas: { some: { zonaId: datos.zonaId } } },
+    select: { usuarioId: true },
+  });
+  for (const d of destinatarios) await avisar(null, d.usuarioId, `Nueva solicitud de ${oficio.nombre} en ${zona.nombre}.`, s.id);
   return serializar(s, 'clienteDueno', null);
 }
 

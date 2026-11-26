@@ -83,4 +83,16 @@ router.patch('/admin/reports/:reporteId', requiereRol('admin'), async (req, res)
   res.json({ ok: true, accion: a });
 });
 
+// Mejora v1.1-7: el administrador levanta una suspensión con motivo.
+const levantar = z.object({ motivo: z.string({ message: 'Escribe el motivo' }).trim().min(10, { message: 'Escribe el motivo (mínimo 10 caracteres)' }).max(300) });
+router.patch('/admin/workers/:trabajadorId/reinstate', requiereRol('admin'), async (req, res) => {
+  const trabajadorId = uuid.parse(req.params.trabajadorId);
+  levantar.parse(req.body);
+  const { count } = await prisma.perfilTrabajador.updateMany({ where: { id: trabajadorId, suspendido: true }, data: { suspendido: false } });
+  if (count === 0) throw errores.conflict('Este trabajador no está suspendido');
+  const p = await prisma.perfilTrabajador.findUnique({ where: { id: trabajadorId } });
+  await require('../../shared/avisos').avisar(null, p.usuarioId, 'Tu cuenta fue reactivada por el equipo de OficioYa.');
+  res.json({ ok: true });
+});
+
 module.exports = router;

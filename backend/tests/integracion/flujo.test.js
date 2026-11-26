@@ -488,6 +488,27 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     });
   });
 
+  describe('Mejoras v1.1 implementadas', () => {
+    test('v1.1-2 al publicar una solicitud, el trabajador del oficio y zona recibe aviso; el electricista no', async () => {
+      await crearSolicitud('ana');
+      const ok = await request(app).get('/api/v1/notifications').set(auth('carlos'));
+      expect(ok.body.some((n) => n.texto.startsWith('Nueva solicitud de Plomería'))).toBe(true);
+      const no = await request(app).get('/api/v1/notifications').set(auth('elena'));
+      expect(no.body.some((n) => n.texto.startsWith('Nueva solicitud de Plomería'))).toBe(false);
+    });
+    test('v1.1-7 el admin levanta la suspensión y el trabajador vuelve a aparecer; repetir → 409', async () => {
+      const id = S[S.aceptado].perfilId;
+      await request(app).patch(`/api/v1/admin/workers/${id}/reinstate`).set(auth('admin')).send({ motivo: 'Reporte revisado sin fundamento' }).expect(200);
+      const b = await request(app).get(`/api/v1/workers?oficioId=${cat.plomeria}&zonaId=${cat.centro}`).set(auth('ana'));
+      expect(b.body.map((t) => t.id)).toContain(id);
+      await request(app).patch(`/api/v1/admin/workers/${id}/reinstate`).set(auth('admin')).send({ motivo: 'Reporte revisado sin fundamento' }).expect(409);
+    });
+    test('v1.1-4 el sexto intento fallido en un minuto → 429', async () => {
+      for (let i = 0; i < 5; i++) await request(app).post('/api/v1/auth/login').send({ email: 'luis@prueba.test', password: 'mala' }).expect(401);
+      await request(app).post('/api/v1/auth/login').send({ email: 'luis@prueba.test', password: 'mala' }).expect(429);
+    });
+  });
+
   describe('RNF-02 Sesiones (ADR-04)', () => {
     test('el refresh token rota: el usado ya no sirve', async () => {
       const r = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: S.ana.refresh });
