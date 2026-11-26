@@ -405,6 +405,7 @@ export function Preguntas({ s, rel, ocupado, accion, id }) {
   const mias = s.preguntas.filter((q) => q.mia).length;
   if (!s.preguntas.length && !puedePreguntar) return null;
   const visibles = esCliente ? s.preguntas : s.preguntas.filter((q) => q.mia || q.respuesta);
+  if (!visibles.length && !(puedePreguntar && mias < 3)) return null;
 
   return (
     <section>
