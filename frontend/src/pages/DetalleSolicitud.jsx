@@ -310,7 +310,7 @@ function calcularSiguiente(s, rel, cotizaciones) {
   const sinResponder = s.preguntas.filter((q) => !q.respuesta).length;
   if (rel === 'clienteDueno') {
     if (s.estado === 'abierta') {
-      if (sinResponder) return { accion: true, texto: `Tienes ${sinResponder} ${sinResponder === 1 ? 'pregunta' : 'preguntas'} de trabajadores por responder.`, ancla: 'preguntas', boton: 'Responder' };
+      if (sinResponder) return { accion: true, texto: `Tienes ${sinResponder} ${sinResponder === 1 ? 'pregunta' : 'preguntas'} de trabajadores por responder.`, ancla: 'preguntas', boton: 'Ir a las preguntas' };
       return { texto: `Esperando cotizaciones. Los trabajadores verificados de ${s.zona.nombre} ya pueden ver tu solicitud.` };
     }
     if (s.estado === 'cotizada') {
@@ -318,15 +318,15 @@ function calcularSiguiente(s, rel, cotizaciones) {
       return { accion: true, texto: `Compara y elige una de tus ${vigentes} ${vigentes === 1 ? 'cotización' : 'cotizaciones'}.`, ancla: 'cotizaciones', boton: 'Ver cotizaciones' };
     }
     if (['aceptada', 'en_curso'].includes(s.estado)) {
-      if (pendiente) return { accion: true, texto: pendiente.tipo === 'presupuesto' ? `Aprueba o rechaza el presupuesto de ${pesos(pendiente.montoPropuesto)}.` : `Responde al cambio de precio: ${pesos(pendiente.montoAnterior)} a ${pesos(pendiente.montoPropuesto)}.`, ancla: 'precio', boton: 'Revisar' };
-      if (s.terminadaPorTrabajadorEn) return { accion: true, texto: `El trabajador dice que ya terminó. Confírmalo o di qué falta (quedan ${s.horasParaDisputar} h).`, ancla: 'terminado', boton: 'Revisar' };
-      if (s.visita && !s.visita.confirmada) return { accion: true, texto: 'Confirma el horario de visita que propuso el trabajador.', ancla: 'visita', boton: 'Ver horario' };
+      if (pendiente) return { accion: true, texto: pendiente.tipo === 'presupuesto' ? `Aprueba o rechaza el presupuesto de ${pesos(pendiente.montoPropuesto)}.` : `Responde al cambio de precio: ${pesos(pendiente.montoAnterior)} a ${pesos(pendiente.montoPropuesto)}.`, ancla: 'precio', boton: 'Ir a revisar' };
+      if (s.terminadaPorTrabajadorEn) return { accion: true, texto: `El trabajador dice que ya terminó. Confírmalo o di qué falta (quedan ${s.horasParaDisputar} h).`, ancla: 'terminado', boton: 'Ir a revisar' };
+      if (s.visita && !s.visita.confirmada) return { accion: true, texto: 'Confirma el horario de visita que propuso el trabajador.', ancla: 'visita', boton: 'Ir a la visita' };
       if (cot.tipo === 'diagnostico' && !presupuestoOk && !presupuestoNo) return { texto: 'Cuando el trabajador revise, te mandará su presupuesto para que lo apruebes.' };
-      if (s.estado === 'aceptada') return { texto: `${cot.nombre} ya tiene tu dirección. Coordínense por WhatsApp.`, ancla: 'contacto', boton: 'Contactar' };
+      if (s.estado === 'aceptada') return { texto: `${cot.nombre} ya tiene tu dirección. Coordínense por WhatsApp.`, ancla: 'contacto', boton: 'Ir al contacto' };
       return { texto: 'Trabajo en curso. Cuando quede, confirma que terminó.' };
     }
     if (s.estado === 'completada') {
-      if (!s.resena && s.diasRestantesParaResena > 0) return { accion: true, texto: `Califica el trabajo de ${cot.nombre}. Tu calificación ayuda a otros clientes.`, ancla: 'calificar', boton: 'Calificar' };
+      if (!s.resena && s.diasRestantesParaResena > 0) return { accion: true, texto: `Califica el trabajo de ${cot.nombre}. Tu calificación ayuda a otros clientes.`, ancla: 'calificar', boton: 'Ir a calificar' };
       return { texto: `Trabajo terminado por ${pesos(s.montoFinal)}.` };
     }
     return null;
@@ -336,15 +336,15 @@ function calcularSiguiente(s, rel, cotizaciones) {
     if (!['aceptada', 'en_curso'].includes(s.estado)) return null;
     if (pendiente) return { texto: 'Esperando que el cliente responda tu propuesta. No hagas el cambio hasta que la acepte.' };
     if (s.terminadaPorTrabajadorEn) return { texto: `Esperando que el cliente confirme (quedan ${s.horasParaDisputar} h; si no responde, se cierra solo).` };
-    if (cot.tipo === 'diagnostico' && presupuestoNo && !presupuestoOk) return { accion: true, texto: 'El cliente rechazó tu presupuesto. Manda otro o cierra cobrando solo la visita.', ancla: 'precio', boton: 'Decidir' };
-    if (!s.visita && s.estado === 'aceptada') return { accion: true, texto: 'Propón el día y la hora de tu visita.', ancla: 'visita', boton: 'Proponer horario' };
-    if (cot.tipo === 'diagnostico' && !presupuestoOk) return { accion: true, texto: 'Después de revisar, manda tu presupuesto para que el cliente lo apruebe.', ancla: 'precio', boton: 'Hacer presupuesto' };
-    if (s.estado === 'aceptada') return { accion: true, texto: s.visita.confirmada ? 'Cuando llegues, inicia el trabajo.' : 'Esperando que el cliente confirme tu horario. Cuando llegues, inicia el trabajo.', ancla: 'iniciar', boton: 'Ir' };
+    if (cot.tipo === 'diagnostico' && presupuestoNo && !presupuestoOk) return { accion: true, texto: 'El cliente rechazó tu presupuesto. Manda otro o cierra cobrando solo la visita.', ancla: 'precio', boton: 'Ir al presupuesto' };
+    if (!s.visita && s.estado === 'aceptada') return { accion: true, texto: 'Propón el día y la hora de tu visita.', ancla: 'visita', boton: 'Ir a la visita' };
+    if (cot.tipo === 'diagnostico' && !presupuestoOk) return { accion: true, texto: 'Después de revisar, manda tu presupuesto para que el cliente lo apruebe.', ancla: 'precio', boton: 'Ir al presupuesto' };
+    if (s.estado === 'aceptada') return { accion: true, texto: s.visita.confirmada ? 'Cuando llegues, inicia el trabajo.' : 'Esperando que el cliente confirme tu horario. Cuando llegues, inicia el trabajo.', ancla: 'iniciar', boton: 'Ir a iniciar' };
     return { texto: 'Trabajo en curso. Si algo cambia, propón un cambio de precio con foto. Al terminar, márcalo como terminado.' };
   }
-  if (rel === 'trabajadorElegible') return { accion: true, texto: 'Puedes hacerle preguntas al cliente o mandar tu cotización.', ancla: 'cotizar', boton: 'Cotizar' };
+  if (rel === 'trabajadorElegible') return { accion: true, texto: 'Puedes hacerle preguntas al cliente o mandar tu cotización.', ancla: 'cotizar', boton: 'Ir a cotizar' };
   if (rel === 'trabajadorCotizo' && s.miCotizacion) {
-    if (s.miCotizacion.estado === 'pendiente' && s.miCotizacion.vencida) return { accion: true, texto: 'Tu cotización venció y el cliente ya no puede aceptarla. Renuévala.', ancla: 'mi-cotizacion', boton: 'Renovar' };
+    if (s.miCotizacion.estado === 'pendiente' && s.miCotizacion.vencida) return { accion: true, texto: 'Tu cotización venció y el cliente ya no puede aceptarla. Renuévala.', ancla: 'mi-cotizacion', boton: 'Ir a mi cotización' };
     if (s.miCotizacion.estado === 'pendiente') return { texto: 'Esperando que el cliente elija.' };
     if (s.miCotizacion.estado === 'rechazada') return { texto: 'El cliente eligió otra cotización.' };
   }
