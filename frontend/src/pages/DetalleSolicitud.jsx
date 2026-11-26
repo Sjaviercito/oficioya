@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, urlArchivo } from '../api/client';
-import { ESTADOS, MOTIVOS_CANCELACION, fecha, pesos } from '../api/catalogo';
+import { ESTADOS, MOTIVOS_CANCELACION, MOTIVO_SIN_ACUERDO, fecha, pesos } from '../api/catalogo';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
 import Pasos from '../components/Pasos';
 import TarjetaTrabajador from '../components/TarjetaTrabajador';
+import { Ajustes, DesgloseCotizacion, FormularioCotizacion, Preguntas, Vigencia } from '../components/Precios';
 
 const CANCELABLE = {
   clienteDueno: ['abierta', 'cotizada', 'aceptada', 'en_curso'],
@@ -40,8 +41,10 @@ export default function DetalleSolicitud() {
       await fn();
       setMensaje(exito);
       await cargar();
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setOcupado(false);
     }
@@ -68,10 +71,10 @@ export default function DetalleSolicitud() {
         <div className="dato"><dt>Para el</dt><dd>{fecha(s.fechaDeseada)}</dd></div>
         {!esCliente && <div className="dato"><dt>Cliente</dt><dd>{s.cliente.nombre}</dd></div>}
         {s.trabajadorAceptado && (
-          <div className="dato"><dt>Trabajador</dt><dd>{s.trabajadorAceptado.nombre} · {s.trabajadorAceptado.tiempoEstimadoHoras} h estimadas</dd></div>
+          <div className="dato"><dt>Trabajador</dt><dd>{s.trabajadorAceptado.nombre} · {s.trabajadorAceptado.tipo === 'diagnostico' ? 'visita de diagnóstico' : `${s.trabajadorAceptado.tiempoEstimadoHoras} h estimadas`}</dd></div>
         )}
         {s.montoFinal !== null && (
-          <div className="dato"><dt>Monto</dt><dd><strong>{pesos(s.montoFinal)}</strong>{s.montoFinal !== s.trabajadorAceptado.monto && <span className="suave"> (cotizado: {pesos(s.trabajadorAceptado.monto)})</span>}</dd></div>
+          <div className="dato"><dt>Monto</dt><dd><strong>{pesos(s.montoFinal)}</strong>{s.montoFinal !== s.trabajadorAceptado.monto && <span className="suave"> ({s.trabajadorAceptado.tipo === 'diagnostico' ? 'visita' : 'cotizado'}: {pesos(s.trabajadorAceptado.monto)})</span>}</dd></div>
         )}
       </dl>
       <p>{s.descripcion}</p>
@@ -102,11 +105,12 @@ export default function DetalleSolicitud() {
                     t={c.trabajador}
                     extra={
                       <div style={{ marginTop: '0.5rem' }}>
-                        <strong>{pesos(c.monto)}</strong> <span className="suave">· {c.tiempoEstimadoHoras} h estimadas</span>
+                        <DesgloseCotizacion c={c} />
+                        <div className="pequeno suave">{c.tipo === 'cerrado' ? `${c.tiempoEstimadoHoras} h estimadas · ` : ''}<Vigencia c={c} /></div>
                         <div>
-                          <button className="boton accion" style={{ marginTop: '0.5rem' }} disabled={ocupado}
+                          <button className="boton accion" style={{ marginTop: '0.5rem' }} disabled={ocupado || c.vencida}
                             onClick={() => accion(() => api.post(`/requests/${id}/accept`, { cotizacionId: c.id }), 'Cotización aceptada. El trabajador ya puede ver tu dirección.')}>
-                            Aceptar esta cotización
+                            {c.vencida ? 'Cotización vencida' : c.tipo === 'diagnostico' ? 'Aceptar la visita' : 'Aceptar esta cotización'}
                           </button>
                         </div>
                       </div>
@@ -119,12 +123,9 @@ export default function DetalleSolicitud() {
         </section>
       )}
 
-      <Ajustes s={s} rel={rel} ocupado={ocupado}
-        onProponer={(datos) => accion(() => api.post(`/requests/${id}/adjustments`, datos), 'Ajuste enviado. El cliente debe aceptarlo o rechazarlo.')}
-        onDecidir={(ajusteId, decision) => accion(() => api.patch(`/requests/${id}/adjustments/${ajusteId}`, { decision }),
-          decision === 'aceptar' ? 'Aceptaste el ajuste. El monto quedó actualizado.' : 'Rechazaste el ajuste. El trabajo sigue al precio original.')} />
+      <Ajustes s={s} rel={rel} ocupado={ocupado} accion={accion} id={id} />
 
-      {esCliente && s.estado === 'en_curso' && !s.terminadaPorTrabajadorEn && (
+      {esCliente && s.estado === 'en_curso' && !s.terminadaPorTrabajadorEn && !s.ajustes.some((x) => x.estado === 'pendiente') && (
         <div className="acciones">
           <button className="boton accion ancho" disabled={ocupado}
             onClick={() => accion(() => api.post(`/requests/${id}/complete`), 'Listo, el trabajo quedó como terminado.')}>
@@ -160,6 +161,8 @@ export default function DetalleSolicitud() {
         </details>
       )}
 
+      <Preguntas s={s} rel={rel} ocupado={ocupado} accion={accion} id={id} />
+
       {/* Trabajador: cotizar o iniciar */}
       {rel === 'trabajadorElegible' && (
         <FormularioCotizacion ocupado={ocupado}
@@ -167,7 +170,7 @@ export default function DetalleSolicitud() {
       )}
       {s.miCotizacion && rel !== 'trabajadorAceptado' && (
         <Aviso tipo="info">
-          Tu cotización: {pesos(s.miCotizacion.monto)} ({s.miCotizacion.tiempoEstimadoHoras} h) —{' '}
+          Tu cotización: {s.miCotizacion.tipo === 'diagnostico' ? `visita de diagnóstico de ${pesos(s.miCotizacion.costoVisita)}` : `${pesos(s.miCotizacion.monto)} (${s.miCotizacion.tiempoEstimadoHoras} h)`} —{' '}
           {{ pendiente: 'esperando respuesta del cliente', aceptada: 'aceptada', rechazada: 'no fue elegida' }[s.miCotizacion.estado]}.
         </Aviso>
       )}
@@ -182,30 +185,10 @@ export default function DetalleSolicitud() {
 
       {puedeCancelar && (
         <FormularioCancelacion ocupado={ocupado} esTrabajador={rel === 'trabajadorAceptado'}
+          conEvidencia={s.ajustes.some((a) => a.estado === 'rechazado' && a.tieneFoto && ['pieza_extra', 'mas_trabajo', 'dano_oculto'].includes(a.tipo))}
           onEnviar={(datos) => accion(() => api.post(`/requests/${id}/cancel`, datos), 'La solicitud quedó cancelada.')} />
       )}
     </>
-  );
-}
-
-function FormularioCotizacion({ onEnviar, ocupado }) {
-  return (
-    <section>
-      <h2>Enviar cotización</h2>
-      <form onSubmit={(e) => {
-        e.preventDefault();
-        const d = Object.fromEntries(new FormData(e.currentTarget));
-        onEnviar({ monto: Number(d.monto), tiempoEstimadoHoras: Number(d.tiempoEstimadoHoras) });
-      }}>
-        <Campo etiqueta="Monto (MXN)">
-          <input name="monto" type="number" inputMode="decimal" min="1" step="0.01" required />
-        </Campo>
-        <Campo etiqueta="Tiempo estimado (horas)">
-          <input name="tiempoEstimadoHoras" type="number" inputMode="numeric" min="1" step="1" required />
-        </Campo>
-        <button className="boton accion ancho" disabled={ocupado}>Enviar cotización</button>
-      </form>
-    </section>
   );
 }
 
@@ -235,7 +218,7 @@ function FormularioResena({ onEnviar, ocupado, dias, monto }) {
   );
 }
 
-function FormularioCancelacion({ onEnviar, ocupado, esTrabajador }) {
+function FormularioCancelacion({ onEnviar, ocupado, esTrabajador, conEvidencia }) {
   const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState('');
   if (!abierto) {
@@ -248,7 +231,9 @@ function FormularioCancelacion({ onEnviar, ocupado, esTrabajador }) {
   return (
     <section>
       <h2>Cancelar solicitud</h2>
-      {esTrabajador && <Aviso tipo="info">Cancelar un trabajo aceptado baja tu reputación.</Aviso>}
+      {esTrabajador && (motivo === MOTIVO_SIN_ACUERDO
+        ? <Aviso tipo="info">El cliente rechazó un cambio de precio que comprobaste con foto: esta cancelación no baja tu reputación.</Aviso>
+        : <Aviso tipo="info">Cancelar un trabajo aceptado baja tu reputación.</Aviso>)}
       <form onSubmit={(e) => {
         e.preventDefault();
         const detalle = new FormData(e.currentTarget).get('detalle')?.trim();
@@ -257,7 +242,7 @@ function FormularioCancelacion({ onEnviar, ocupado, esTrabajador }) {
         <Campo etiqueta="Motivo">
           <select required value={motivo} onChange={(e) => setMotivo(e.target.value)}>
             <option value="" disabled>Elige un motivo</option>
-            {MOTIVOS_CANCELACION.map((m) => <option key={m}>{m}</option>)}
+            {MOTIVOS_CANCELACION.filter((m) => m !== MOTIVO_SIN_ACUERDO || (esTrabajador && conEvidencia)).map((m) => <option key={m}>{m}</option>)}
           </select>
         </Campo>
         {motivo === 'Otro' && (
@@ -270,57 +255,6 @@ function FormularioCancelacion({ onEnviar, ocupado, esTrabajador }) {
           <button type="button" className="boton secundario" onClick={() => setAbierto(false)}>No cancelar</button>
         </div>
       </form>
-    </section>
-  );
-}
-
-// RF-16: historial de ajustes de precio, propuesta del trabajador y respuesta del cliente.
-function Ajustes({ s, rel, ocupado, onProponer, onDecidir }) {
-  const pendiente = s.ajustes.find((a) => a.estado === 'pendiente');
-  const puedeProponer = rel === 'trabajadorAceptado' && s.estado === 'en_curso' && !pendiente;
-  if (!s.ajustes.length && !puedeProponer) return null;
-  const porcentaje = s.oficio.topeAjuste ?? 0.5;
-  const tope = s.trabajadorAceptado ? Math.round(s.trabajadorAceptado.monto * (1 + porcentaje) * 100) / 100 : 0;
-  const ETIQUETA = { pendiente: 'Esperando al cliente', aceptado: 'Aceptado', rechazado: 'Rechazado' };
-
-  return (
-    <section>
-      <h2>Ajustes de precio</h2>
-      {s.ajustes.length > 0 && (
-        <ul className="lista">
-          {s.ajustes.map((a) => (
-            <li key={a.id} className="fila">
-              <div className="fila-titulo">
-                <span>{pesos(a.montoAnterior)} → {pesos(a.montoPropuesto)}</span>
-                <span className={`estado ${a.estado === 'aceptado' ? 'completada' : a.estado === 'rechazado' ? 'cancelada' : 'en_curso'}`}>{ETIQUETA[a.estado]}</span>
-              </div>
-              <p className="suave pequeno" style={{ margin: '0.25rem 0 0' }}>{a.motivo} · {new Date(a.creadoEn).toLocaleString('es-MX')}</p>
-              {a.estado === 'pendiente' && rel === 'clienteDueno' && (
-                <div className="acciones">
-                  <button className="boton accion" disabled={ocupado} onClick={() => onDecidir(a.id, 'aceptar')}>Aceptar {pesos(a.montoPropuesto)}</button>
-                  <button className="boton secundario" disabled={ocupado} onClick={() => onDecidir(a.id, 'rechazar')}>Rechazar y seguir en {pesos(a.montoAnterior)}</button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {puedeProponer && (
-        <form style={{ marginTop: '1rem' }} onSubmit={(e) => {
-          e.preventDefault();
-          const d = Object.fromEntries(new FormData(e.currentTarget));
-          onProponer({ montoPropuesto: Number(d.montoPropuesto), motivo: d.motivo.trim() });
-        }}>
-          <p className="suave pequeno">Si el trabajo resultó más grande, propón el nuevo monto. Máximo {pesos(tope)} (+{Math.round(porcentaje * 100)} % de lo cotizado en {s.oficio.nombre}); si necesitas más, el cliente debe abrir una solicitud nueva.</p>
-          <Campo etiqueta="Nuevo monto (MXN)">
-            <input name="montoPropuesto" type="number" inputMode="decimal" min={s.montoFinal + 0.01} max={tope} step="0.01" required />
-          </Campo>
-          <Campo etiqueta="Motivo" ayuda="Mínimo 10 caracteres. El cliente lo verá antes de decidir.">
-            <textarea name="motivo" required minLength={10} maxLength={300} />
-          </Campo>
-          <button className="boton ancho" disabled={ocupado}>Proponer ajuste</button>
-        </form>
-      )}
     </section>
   );
 }
@@ -346,7 +280,7 @@ function Coordinacion({ s, rel, esCliente, ocupado, accion, id }) {
                 <a className="boton accion" href={`https://wa.me/52${c.telefono}?text=${mensaje}`} target="_blank" rel="noopener noreferrer">WhatsApp con {c.nombre}</a>
                 <a className="boton secundario" href={`tel:${c.telefono}`}>Llamar</a>
               </div>
-              <p className="suave pequeno" style={{ marginTop: '0.75rem' }}>Usa WhatsApp para coordinarte. Los cambios de precio regístralos con un ajuste aquí, para que quede constancia. OficioYa nunca te pedirá por WhatsApp códigos, contraseñas ni pagos.</p>
+              <p className="suave pequeno" style={{ marginTop: '0.75rem' }}>Usa WhatsApp para coordinarte. Los cambios de precio regístralos aquí (con foto si puedes), para que quede constancia. OficioYa nunca te pedirá por WhatsApp códigos, contraseñas ni pagos.</p>
             </>
           ) : (
             <p className="suave">{c.nombre} todavía no registró su celular.</p>

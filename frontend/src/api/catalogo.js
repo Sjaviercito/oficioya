@@ -21,7 +21,9 @@ export const ESTADOS = {
   cancelada: 'Cancelada',
 };
 
-export const MOTIVOS_CANCELACION = ['Ya no lo necesito', 'Encontré otra opción', 'No puedo asistir', 'Cambió el precio', 'Otro'];
+// v1.3: el último motivo solo lo ve el trabajador cuando el cliente rechazó un cambio que comprobó con foto.
+export const MOTIVO_SIN_ACUERDO = 'No puedo continuar con el precio original';
+export const MOTIVOS_CANCELACION = ['Ya no lo necesito', 'Encontré otra opción', 'No puedo asistir', 'Cambió el precio', MOTIVO_SIN_ACUERDO, 'Otro'];
 
 export const pesos = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n);
 export const fecha = (iso) =>

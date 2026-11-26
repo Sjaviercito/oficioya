@@ -1,42 +1,38 @@
-// Interfaz de almacenamiento de archivos (ADR-05). Implementación local en disco;
-// se puede cambiar por un bucket privado (Azure Blob, S3) sin tocar los módulos.
-const fs = require('fs/promises');
-const path = require('path');
+// Interfaz de almacenamiento de archivos (ADR-05, revisado en v1.1).
+// Los archivos se guardan en la tabla "archivo" de PostgreSQL: el disco de Render se borra en
+// cada reinicio y la base de datos no. Las identificaciones se cifran con AES-256-GCM antes de
+// guardarse y se marcan como no públicas; solo se leen por el endpoint del administrador.
 const crypto = require('crypto');
-const config = require('../../config');
+const prisma = require('../prisma');
 const { cifrar, descifrar } = require('../crypto');
 
 const EXTENSIONES = { 'image/jpeg': 'jpg', 'image/png': 'png' };
-const MIME_POR_EXT = { jpg: 'image/jpeg', png: 'image/png' };
 
-// Archivos públicos (fotos de perfil y de solicitudes): se sirven en /uploads.
+// Fotos de perfil y de solicitudes. Devuelve la ruta pública "/uploads/<clave>".
 async function guardarPublico(carpeta, archivo) {
-  const ext = EXTENSIONES[archivo.tipoReal];
-  const nombre = `${crypto.randomUUID()}.${ext}`;
-  const dir = path.resolve(config.publicUploadsDir, carpeta);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, nombre), archivo.buffer);
-  return `/uploads/${carpeta}/${nombre}`;
+  const clave = `${carpeta}/${crypto.randomUUID()}.${EXTENSIONES[archivo.tipoReal]}`;
+  await prisma.archivo.create({ data: { clave, mime: archivo.tipoReal, contenido: archivo.buffer, publico: true } });
+  return `/uploads/${clave}`;
 }
 
-// Archivos privados (INE y selfie): se guardan cifrados FUERA de la carpeta pública.
+// INE y selfie: cifradas y privadas. Devuelve la clave interna.
 async function guardarPrivadoCifrado(carpeta, archivo) {
-  const ext = EXTENSIONES[archivo.tipoReal];
-  const clave = `${carpeta}/${crypto.randomUUID()}.${ext}.enc`;
-  const ruta = path.resolve(config.privateStorageDir, clave);
-  await fs.mkdir(path.dirname(ruta), { recursive: true });
-  await fs.writeFile(ruta, cifrar(archivo.buffer));
+  const clave = `${carpeta}/${crypto.randomUUID()}.${EXTENSIONES[archivo.tipoReal]}.enc`;
+  await prisma.archivo.create({ data: { clave, mime: archivo.tipoReal, contenido: cifrar(archivo.buffer), publico: false } });
   return clave;
 }
 
 async function leerPrivadoDescifrado(clave) {
-  // Evita rutas tipo ../../ (path traversal): la clave debe quedar dentro del directorio privado.
-  const base = path.resolve(config.privateStorageDir);
-  const ruta = path.resolve(base, clave);
-  if (!ruta.startsWith(base + path.sep)) throw new Error('Ruta de almacenamiento inválida');
-  const contenido = await fs.readFile(ruta);
-  const ext = clave.replace(/\.enc$/, '').split('.').pop();
-  return { buffer: descifrar(contenido), mime: MIME_POR_EXT[ext] || 'application/octet-stream' };
+  const a = await prisma.archivo.findUnique({ where: { clave } });
+  if (!a || a.publico) throw new Error('Archivo privado no encontrado');
+  return { buffer: descifrar(Buffer.from(a.contenido)), mime: a.mime };
 }
 
-module.exports = { guardarPublico, guardarPrivadoCifrado, leerPrivadoDescifrado };
+// Solo archivos marcados como públicos; una identificación nunca sale por aquí.
+async function leerPublico(clave) {
+  const a = await prisma.archivo.findUnique({ where: { clave } });
+  if (!a || !a.publico) return null;
+  return { buffer: Buffer.from(a.contenido), mime: a.mime };
+}
+
+module.exports = { guardarPublico, guardarPrivadoCifrado, leerPrivadoDescifrado, leerPublico };

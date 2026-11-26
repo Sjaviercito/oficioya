@@ -130,6 +130,7 @@ router.get('/workers/:trabajadorId/public', async (req, res) => {
     },
   });
   if (!p) throw errores.notFound('Trabajador no encontrado');
+  const repPublica = await require('../workers/reputacion').reputacionDe([p.id]);
   const r2 = (n) => (n === null ? null : Math.round(Number(n) * 100) / 100);
   res.json({
     id: p.id,
@@ -145,6 +146,7 @@ router.get('/workers/:trabajadorId/public', async (req, res) => {
     porcentajeConAjuste: p.trabajosCompletados > 0 ? Math.round((p.trabajosConAjuste / p.trabajosCompletados) * 100) : null,
     esNuevo: p.puntuacionRanking === null,
     resenas: p.resenas,
+    ...(() => { const r = repPublica[p.id] || {}; return { sobreCotizadoPromedio: r.sobreCotizadoPromedio ?? null, insignias: r.insignias || [] }; })(),
   });
 });
 

@@ -196,6 +196,11 @@ model Solicitud {
   // v1.2: horario de visita propuesto por el trabajador y confirmado por el cliente.
   visitaPropuesta      DateTime?       @map("visita_propuesta")
   visitaConfirmada     Boolean         @default(false) @map("visita_confirmada")
+  // v1.3: montos registrados al completar, para la métrica "termina X % arriba de lo cotizado".
+  montoBase            Decimal?        @map("monto_base") @db.Decimal(10, 2)
+  montoCerrado         Decimal?        @map("monto_cerrado") @db.Decimal(10, 2)
+  sobreCotizadoPct     Decimal?        @map("sobre_cotizado_pct") @db.Decimal(7, 4)
+  preguntas            Pregunta[]
 
   cliente            Usuario          @relation("SolicitudCliente", fields: [clienteId], references: [id])
   oficio             Oficio           @relation(fields: [oficioId], references: [id])
@@ -228,6 +233,13 @@ model Cotizacion {
   monto               Decimal          @db.Decimal(10, 2)
   tiempoEstimadoHoras Int              @map("tiempo_estimado_horas")
   estado              EstadoCotizacion @default(pendiente)
+  // v1.3 (LFPC art. 59): precio cerrado con mano de obra + material y vigencia, o visita de diagnóstico.
+  tipo                String           @default("cerrado")
+  manoObra            Decimal?         @map("mano_obra") @db.Decimal(10, 2)
+  material            Decimal?         @db.Decimal(10, 2)
+  vigenciaDias        Int              @default(7) @map("vigencia_dias")
+  costoVisita         Decimal?         @map("costo_visita") @db.Decimal(10, 2)
+  visitaAbonable      Boolean          @default(true) @map("visita_abonable")
   creadaEn            DateTime         @default(now()) @map("creada_en")
 
   solicitud         Solicitud        @relation("CotizacionesDeSolicitud", fields: [solicitudId], references: [id], onDelete: Cascade)
@@ -281,6 +293,14 @@ model AjustePrecio {
   montoPropuesto Decimal      @map("monto_propuesto") @db.Decimal(10, 2)
   motivo         String
   estado         EstadoAjuste @default(pendiente)
+  // v1.3: tipo de cambio, desglose, foto del problema y ticket opcional después de comprar.
+  tipo           String       @default("mas_trabajo")
+  deltaManoObra  Decimal      @default(0) @map("delta_mano_obra") @db.Decimal(10, 2)
+  deltaMaterial  Decimal      @default(0) @map("delta_material") @db.Decimal(10, 2)
+  fotoClave      String?      @map("foto_clave")
+  ticketClave    String?      @map("ticket_clave")
+  ticketMonto    Decimal?     @map("ticket_monto") @db.Decimal(10, 2)
+  ticketEn       DateTime?    @map("ticket_en")
   creadoEn       DateTime     @default(now()) @map("creado_en")
   resueltoEn     DateTime?    @map("resuelto_en")
 
@@ -329,4 +349,20 @@ model Archivo {
   creadoEn  DateTime @default(now()) @map("creado_en")
 
   @@map("archivo")
+}
+
+// v1.3 (RF-21): preguntas de los trabajadores antes de cotizar; las ven todos los que pueden cotizar.
+model Pregunta {
+  id           String    @id @default(uuid()) @db.Uuid
+  solicitudId  String    @map("solicitud_id") @db.Uuid
+  trabajadorId String    @map("trabajador_id") @db.Uuid
+  texto        String
+  respuesta    String?
+  creadaEn     DateTime  @default(now()) @map("creada_en")
+  respondidaEn DateTime? @map("respondida_en")
+
+  solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+
+  @@index([solicitudId])
+  @@map("pregunta")
 }

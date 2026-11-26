@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, urlArchivo } from '../api/client';
 import Aviso from '../components/Aviso';
+import { Insignias } from '../components/Precios';
 
 // v1.1-3: perfil público del trabajador.
 export default function Trabajador() {
@@ -22,6 +23,7 @@ export default function Trabajador() {
         <div>
           <h1 style={{ margin: 0 }}>{t.nombre}</h1>
           <span className="sello">✓ Identidad verificada</span>
+          <Insignias t={t} />
         </div>
         <div className="puntuacion">
           {t.esNuevo ? <span className="nuevo">Nuevo</span> : <><strong>{t.puntuacionRanking.toFixed(2)}</strong><span>de 5</span></>}

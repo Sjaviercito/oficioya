@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { urlArchivo } from '../api/client';
+import { Insignias } from './Precios';
 
 export default function TarjetaTrabajador({ t, extra }) {
   const inicial = t.nombre.trim().charAt(0).toUpperCase();
@@ -17,6 +18,7 @@ export default function TarjetaTrabajador({ t, extra }) {
         {t.porcentajeConAjuste !== null && t.porcentajeConAjuste !== undefined && (
           <div className="pequeno suave">{t.porcentajeConAjuste} % de sus trabajos tuvieron ajuste de precio</div>
         )}
+        <Insignias t={t} compacto />
         {extra}
       </div>
       <div className="puntuacion">

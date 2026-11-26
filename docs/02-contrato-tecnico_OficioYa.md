@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Equipo / Autor(es) | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
-| Versión | 1.2 |
-| Fecha | 2026-11-25 |
+| Versión | 1.3 |
+| Fecha | 2026-11-26 |
 | Documento de origen | [01-vision-alcance_OficioYa_Santiago.md](./01-vision-alcance_OficioYa_Santiago.md) |
 | Estado | Vigente (entrega final) |
 
@@ -28,7 +28,7 @@ OficioYa es una aplicación web responsiva, pensada para el celular, que conecta
 | RF-03 | Verificación de identidad por administrador | Must | Sí |
 | RF-04 | Búsqueda de trabajadores ordenada por ranking | Must | Sí |
 | RF-05 | Crear solicitud | Must | Sí |
-| RF-06 | Enviar cotización | Must | Sí |
+| RF-06 | Enviar cotización | Must | Sí (precio cerrado desglosado o visita de diagnóstico, con vigencia, en v1.3) |
 | RF-07 | Control de estados de la solicitud | Must | Sí |
 | RF-08 | Registro de cancelaciones | Must | Sí |
 | RF-09 | Reseña de trabajo completado | Must | Sí |
@@ -38,12 +38,12 @@ OficioYa es una aplicación web responsiva, pensada para el celular, que conecta
 | RF-13 | Reportes y suspensión | Should | Sí (v1.0; reactivación en v1.1) |
 | RF-14 | Panel de estadísticas del trabajador | Could | Sí (v1.0) |
 | RF-15 | Historial de solicitudes del cliente | Could | Sí (adelantado en el MVP) |
-| RF-16 | Ajuste de precio con aprobación del cliente | Must | Sí (v1.0, cambio solicitado por el usuario) |
+| RF-16 | Ajuste de precio con aprobación del cliente | Must | Sí (v1.0; por tipo, con foto, ticket y tope solo sobre la mano de obra en v1.3) |
 | RF-17 | Porcentaje de trabajos con ajuste en el perfil del trabajador | Should | Sí (v1.0) |
 | RF-18 | Perfil público del trabajador con reseñas y respuestas | Should | Sí (v1.1) |
 | RF-19 | Tope de ajuste configurable por oficio (administrador) | Could | Sí (v1.1) |
 | RF-20 | Celular de contacto en el registro y en "Mi cuenta" | Must | Sí (v1.2) |
-| RF-21 | Preguntas antes de cotizar | Should | No (pendiente P2) |
+| RF-21 | Preguntas antes de cotizar | Should | Sí (v1.3) |
 | RF-22 | Horario de visita propuesto por el trabajador y confirmado por el cliente | Should | Sí (v1.2) |
 | RF-23 | Contacto directo por WhatsApp o llamada durante el trabajo activo | Must | Sí (v1.2) |
 | RF-24 | Confirmación del monto pagado por ambas partes | Should | No (pendiente P2) |
@@ -52,6 +52,9 @@ OficioYa es una aplicación web responsiva, pensada para el celular, que conecta
 | RF-27 | Cambiar contraseña | Must | Sí (v1.2) |
 | RF-28 | Eliminar cuenta (derecho de cancelación) | Must | Sí (v1.2) |
 | RF-29 | Aviso de privacidad y términos aceptados al registrarse | Must | Sí (v1.2) |
+| RF-30 | Visita de diagnóstico con presupuesto aprobado por el cliente (costo de visita abonable o no) | Should | Sí (v1.3) |
+| RF-31 | Insignias del trabajador y "termina X % arriba de lo cotizado" | Should | Sí (v1.3) |
+| RF-32 | Cancelación sin penalización cuando el cliente rechaza un aumento comprobado con foto | Should | Sí (v1.3) |
 
 > Prioridad: **Must** (sin esto el MVP no sirve), **Should** (importante, pero hay alternativa), **Could** (deseable).
 
@@ -289,6 +292,52 @@ Cualquier transición que no aparezca en esta tabla responde `409` y no modifica
 
 ---
 
+### 3.8 Cambios de la v1.3: precios (`docs/06-analisis-ajuste-de-precio_OficioYa.md`)
+
+Esta sección **reemplaza** las reglas de la 3.5 donde se contradicen. Sigue sin haber pagos, chat ni notificaciones push dentro de la app.
+
+**Cotización (RF-06).** Dos tipos:
+
+- **Precio cerrado:** `{ tipo: "cerrado", manoObra, material, tiempoEstimadoHoras, vigenciaDias }`. `monto = manoObra + material` (> 0). Cumple la LFPC art. 59: presupuesto por escrito con mano de obra, refacciones y vigencia.
+- **Visita de diagnóstico (RF-30):** `{ tipo: "diagnostico", costoVisita, visitaAbonable, tiempoEstimadoHoras?, vigenciaDias }`. `monto = costoVisita`. Cada trabajador pone su costo de visita (no hay tarifa fija de la plataforma). `visitaAbonable` (por omisión `true`) indica que la visita se descuenta del trabajo si el cliente acepta el presupuesto.
+- **Vigencia:** 1 a 60 días (por omisión 7). Aceptar una cotización vencida → `409 COTIZACION_VENCIDA`. Las respuestas incluyen `venceEn` y `vencida`.
+- **Compatibilidad:** `{ monto, tiempoEstimadoHoras }` se sigue aceptando y equivale a precio cerrado con `manoObra = monto`, `material = 0`.
+
+**Presupuesto del diagnóstico (RF-30).** El trabajador aceptado envía `tipo: "presupuesto"` con `deltaManoObra` y `deltaMaterial` (el trabajo completo, P). Se permite en `aceptada` o `en_curso`, antes de cualquier otro cambio, y no tiene tope. Total propuesto: `max(P, visita)` si la visita es abonable; `visita + P` si no lo es. Si el cliente lo rechaza, el trabajador puede mandar otro o el trabajo se cierra solo con la visita; el rechazo **no** cuenta para el ranking (no es un aumento sobre algo cotizado). Sin presupuesto aceptado, cualquier otro cambio → `409 SIN_PRESUPUESTO`; un segundo presupuesto tras uno aceptado → `409 PRESUPUESTO_ACEPTADO`; presupuesto en precio cerrado → `409 NO_ES_DIAGNOSTICO`.
+
+**Cambios de precio (RF-16).** `POST /requests/:id/adjustments` (multipart; campo opcional `foto`) con `{ tipo, deltaManoObra, deltaMaterial, detalle? }`:
+
+| Tipo | Quién lo origina | Sentido | Tope | Requiere aprobación | Cuenta en ranking y en "termina X % arriba" |
+|---|---|---|---|---|---|
+| `pieza_extra`, `mas_trabajo`, `dano_oculto` | Lo que encontró el trabajador | Sube | Sí, solo la mano de obra | Sí | Sí |
+| `cliente_pidio_mas` | El cliente pidió trabajo nuevo | Sube | No | Sí | No |
+| `mas_facil` | Resultó más fácil | Baja | — | No: se aplica de inmediato y se avisa al cliente | No |
+| `presupuesto` | Después del diagnóstico | Fija el total | No | Sí | No (es la base) |
+
+- **Tope solo sobre la mano de obra:** la suma de `deltaManoObra` de los aumentos aceptados del trabajador más el nuevo no puede superar `manoObraBase × tope del oficio` (por omisión 50 %). `manoObraBase` es la mano de obra de la cotización o del presupuesto aceptado. Si lo supera → `422 AJUSTE_EXCEDE_TOPE`. El **material no tiene tope**: se comprueba con ticket.
+- Un aumento con cambio cero o negativo → `422 AJUSTE_NO_AUMENTA`; una baja que deja el total en cero o menos → `400 MONTO_INVALIDO`. Se mantienen: un cambio pendiente a la vez (`409`), solo en `en_curso` (salvo el presupuesto) y nada después de "terminado".
+- **Monto vigente** = cotización + Σ(cambios aceptados) − Σ(ahorro por ticket).
+- **Foto (opcional):** se guarda privada; solo la ven las partes y el administrador (`GET /requests/:id/adjustments/:ajusteId/files/foto`).
+- **No hay tolerancia preautorizada:** todo aumento lo aprueba el cliente antes de hacerse.
+
+**Ticket.** `POST /requests/:id/adjustments/:ajusteId/ticket` (multipart: `ticket`, `ticketMonto`), solo el trabajador aceptado, en un cambio aceptado con `deltaMaterial > 0`, una vez (`409` si ya tiene). Si el ticket es menor que el material aprobado, la diferencia **baja el total automáticamente**; si es mayor, el total no sube (haría falta otro cambio).
+
+**Cancelación sin penalización (RF-32).** Motivo `"No puedo continuar con el precio original"`, solo para el trabajador aceptado y solo si existe un aumento suyo (`pieza_extra`, `mas_trabajo` o `dano_oculto`) **rechazado y con foto**. Sin esa evidencia → `409 SIN_EVIDENCIA`. Con evidencia, la cancelación **no es atribuible** (no sube la tasa de cancelación). El cliente no puede usar ese motivo (`400`). La foto obligatoria solo existe para esta salida: sin ella, cualquiera podría proponer un aumento inflado, esperar el rechazo y abandonar el trabajo sin costo.
+
+**Métricas e insignias (RF-31).** Al completar se guardan `monto_base` (cotización o presupuesto), `monto_cerrado` y `sobre_cotizado_pct = (cerrado − lo que pidió el cliente − base) / base`. El perfil muestra "termina X % arriba" a partir de 5 trabajos. Insignias (no cambian el ranking; son información para el cliente y metas para el trabajador):
+
+| Insignia | Condición |
+|---|---|
+| Comprueba sus gastos | 3 o más cambios aceptados con material y ticket en al menos el 80 % |
+| Respeta su cotización | 5 o más trabajos medidos y promedio ≤ 5 % arriba |
+| Cumplido | 5 o más trabajos completados y 0 cancelaciones atribuibles |
+
+`GET /workers`, `GET /requests/:id/quotes` y el perfil público incluyen `insignias` y `sobreCotizadoPromedio`; `GET /workers/me/profile` incluye además `progresoInsignias` con el avance de cada una. Los trabajos completados antes de la v1.3 se migran con base = cotización.
+
+**Preguntas antes de cotizar (RF-21).** `POST /requests/:id/questions { texto }`: trabajador verificado, no suspendido, del oficio y zona, con la solicitud `abierta` o `cotizada`; máximo 3 por trabajador (`409`); se rechazan teléfonos, correos y enlaces (`400`) para no sacar la negociación de la plataforma. `PATCH /requests/:id/questions/:preguntaId { respuesta }`: solo el cliente dueño, una vez (`409`). Ambos generan aviso.
+
+**Criterios nuevos:** CA-06.6 (precio cerrado desglosado con vigencia), CA-06.7 (vencida → 409), CA-16.10 (el material no tiene tope), CA-16.11 ("el cliente pidió más" no tiene tope), CA-16.12 ("más fácil" se aplica sola), CA-16.13 (ticket más barato baja el total), CA-16.14 (foto visible solo para las partes; ticket solo del trabajador y una vez), CA-30.1 a CA-30.7 (visita abonable y no abonable, mínimo la visita, presupuesto sin tope antes de iniciar, sin presupuesto no hay otros cambios, flujo completo, rechazo sin efecto en el ranking), CA-17.3 ("termina X % arriba" sin lo que pidió el cliente), CA-17.4 (insignias y progreso en búsqueda y perfil), CA-08.6 (cancelación sin evidencia → 409; con evidencia → no atribuible), CA-21.1 (preguntas: elegibilidad, contacto bloqueado, máximo 3, una respuesta). CA-16.1, CA-16.3 y CA-16.4 se reescriben con el tope sobre la mano de obra.
+
 ### 3.7 Cambios de la v1.2 (análisis causa–consecuencia, `docs/05-analisis-causa-consecuencia_OficioYa.md`)
 
 - **Ranking (cambia la v1.1):** el factor de −10 % usa la proporción de trabajos con un ajuste **rechazado** por el cliente. Los ajustes aceptados ya no penalizan: penalizarlos incentivaba cotizar más alto o cobrar el extra fuera de la plataforma (hallazgo R1).
@@ -317,6 +366,8 @@ Cualquier transición que no aparezca en esta tabla responde `409` y no modifica
 - **Descartado:** refresh token en cookie `HttpOnly`. Frontend y API están en dominios distintos y los navegadores bloquean cookies entre sitios; se mitiga el riesgo de XSS con la CSP.
 
 ### 3.5 Regla de negocio: ajuste de precio (v1.0, RF-16 y RF-17)
+
+> En la v1.3 el tope pasa a medirse solo sobre la mano de obra, los cambios tienen tipo y se agregan bajas, foto y ticket. Donde haya diferencia, manda la sección 3.8.
 
 - Solo el **trabajador aceptado** puede proponer un ajuste, y solo con la solicitud en **`en_curso`**. Fuera de ese estado → `409`.
 - **Solo aumentos:** el monto propuesto debe ser mayor que el **monto vigente** (el de la cotización aceptada o el del último ajuste aceptado). Si no → `422`.
@@ -805,6 +856,7 @@ REGLAS
 |---|---|---|---|
 | 0.1 | 2026-09-22 | Versión inicial | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
 | 0.3 | 2026-11-04 | Ajustes de la construcción del MVP: despliegue frontend en subdominio + API en Render, Node 22, Prisma sin motor binario, tabla `refresh_token`, endpoints de apoyo a la interfaz (ver trazabilidad de la Etapa 3) | Equipo 6 |
+| 1.3 | 2026-11-26 | Precios: cotización desglosada con vigencia o visita de diagnóstico abonable (RF-30), cambios de precio por tipo con foto, bajas automáticas y tope solo sobre la mano de obra, ticket que baja el total, cancelación sin penalización con evidencia (RF-32), insignias y "termina X % arriba" (RF-31), preguntas antes de cotizar (RF-21) | Equipo 6 |
 | 1.2 | 2026-11-26 | Análisis causa–consecuencia: ranking solo penaliza ajustes rechazados, aviso de privacidad, celular y contacto por WhatsApp, horario de visita, terminado por el trabajador con 72 h, reportes en ambos sentidos, cambiar contraseña, eliminar cuenta, demo controlada y ping de disponibilidad | Equipo 6 |
 | 1.1 | 2026-11-26 | Mejoras: archivos persistentes en la base (ADR-05 revisado), perfil público (RF-18), tope por oficio (RF-19), ajustes con peso de 10 % en el ranking, avisos por zona, reactivación, límite de intentos de login y CSP | Equipo 6 |
 | 1.0 | 2026-11-25 | Cambio solicitado por el usuario: ajuste de precio con aprobación del cliente (RF-16, RF-17, sección 3.5, CA-16.x y CA-17.x); RF-14 entra al alcance; RF-11, RF-12 y RF-13 quedan como pendientes conocidos | Equipo 6 |

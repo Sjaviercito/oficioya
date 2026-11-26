@@ -241,3 +241,24 @@ dl { margin: 0 0 1rem; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* v1.3: precios, cambios de precio, insignias y preguntas */
+.selector { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; }
+.selector button {
+  font: inherit; font-weight: 650; text-align: left; padding: 0.75rem; min-height: 64px; cursor: pointer;
+  border: 1.5px solid var(--linea); border-radius: var(--radio); background: var(--blanco); color: var(--tinta);
+}
+.selector button span { display: block; font-weight: 400; font-size: 0.85rem; color: var(--gris); }
+.selector button.activo { border-color: var(--cobalto); background: var(--azulejo); }
+.casilla { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0 0 1rem; }
+.casilla input { width: auto; min-height: auto; margin-top: 0.3rem; accent-color: var(--cobalto); }
+.total { margin: 0.25rem 0 1rem; padding: 0.6rem 0.75rem; background: var(--azulejo); border-radius: var(--radio); }
+.tipos { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.tipos .boton { min-height: 44px; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
+.desglose { margin-bottom: 0.25rem; }
+.evidencia { display: block; max-width: 100%; max-height: 320px; margin-top: 0.5rem; border-radius: 8px; border: 1px solid var(--linea); }
+.insignias { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: 0.3rem; }
+.insignia { font-size: 0.78rem; font-weight: 650; color: var(--cobalto-oscuro); background: var(--azulejo); border-radius: 999px; padding: 0.1rem 0.55rem; }
+.progreso-insignia { display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--linea); }
+.progreso-insignia .marca { font-size: 1.1rem; color: var(--linea); }
+.progreso-insignia.obtenida .marca { color: var(--obra); }

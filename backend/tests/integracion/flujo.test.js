@@ -667,6 +667,138 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     });
   });
 
+  describe('Contrato v1.3: cotización desglosada, diagnóstico, cambios de precio, ticket, insignias y preguntas', () => {
+    beforeAll(async () => {
+      await registrar('cli13', 'cliente');
+      await registrar('tra13', 'trabajador');
+      await perfilYVerificar('tra13', cat.electricidad, cat.lapaz);
+    });
+    async function solicitudLaPaz() {
+      const r = await request(app).post('/api/v1/requests').set(auth('cli13'))
+        .field('oficioId', String(cat.electricidad)).field('zonaId', String(cat.lapaz)).field('colonia', 'La Paz')
+        .field('direccionExacta', 'Calle Luz 3, Puebla').field('descripcion', 'Se bota la pastilla al prender el horno').field('fechaDeseada', hoy());
+      return r.body.solicitud.id;
+    }
+    async function enCurso(cuerpo) {
+      const id = await solicitudLaPaz();
+      const c = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('tra13')).send(cuerpo);
+      expect(c.status).toBe(201);
+      await request(app).post(`/api/v1/requests/${id}/accept`).set(auth('cli13')).send({ cotizacionId: c.body.cotizacion.id }).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/start`).set(auth('tra13')).expect(200);
+      return id;
+    }
+
+    test('CA-06.6 precio cerrado desglosado: el total es mano de obra + material y tiene vigencia', async () => {
+      const id = await solicitudLaPaz();
+      const r = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('tra13')).send({ tipo: 'cerrado', manoObra: 500, material: 300, tiempoEstimadoHoras: 2, vigenciaDias: 3 });
+      expect(r.body.cotizacion).toMatchObject({ tipo: 'cerrado', monto: 800, manoObra: 500, material: 300, vigenciaDias: 3, vencida: false });
+    });
+
+    test('CA-06.7 cotización vencida → 409 al aceptar', async () => {
+      const id = await solicitudLaPaz();
+      const c = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('tra13')).send({ tipo: 'cerrado', manoObra: 500, material: 0, tiempoEstimadoHoras: 2, vigenciaDias: 1 });
+      await prisma.cotizacion.update({ where: { id: c.body.cotizacion.id }, data: { creadaEn: new Date(Date.now() - 2 * 86400000) } });
+      const r = await request(app).post(`/api/v1/requests/${id}/accept`).set(auth('cli13')).send({ cotizacionId: c.body.cotizacion.id });
+      expect(r.status).toBe(409);
+      expect(r.body.error.code).toBe('COTIZACION_VENCIDA');
+    });
+
+    test('CA-30.6 diagnóstico de $200 abonable → presupuesto $600 aceptado → total $600 → al completar la base es $600', async () => {
+      const id = await enCurso({ tipo: 'diagnostico', costoVisita: 200, visitaAbonable: true });
+      const p = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('tra13'))
+        .field('tipo', 'presupuesto').field('deltaManoObra', '450').field('deltaMaterial', '150');
+      expect(p.status).toBe(201);
+      const aj = p.body.solicitud.ajustes[0];
+      expect(aj).toMatchObject({ tipo: 'presupuesto', montoPropuesto: 600, estado: 'pendiente' });
+      const a = await request(app).patch(`/api/v1/requests/${id}/adjustments/${aj.id}`).set(auth('cli13')).send({ decision: 'aceptar' });
+      expect(a.body.solicitud.montoFinal).toBe(600);
+      await request(app).post(`/api/v1/requests/${id}/complete`).set(auth('cli13')).expect(200);
+      const s = await prisma.solicitud.findUnique({ where: { id } });
+      expect(Number(s.montoBase)).toBe(600);
+      expect(Number(s.sobreCotizadoPct)).toBe(0);
+    });
+
+    test('CA-30.7 presupuesto rechazado: se cierra solo con la visita y el rechazo no pesa en el ranking', async () => {
+      const id = await enCurso({ tipo: 'diagnostico', costoVisita: 200 });
+      const p = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('tra13')).send({ tipo: 'presupuesto', deltaManoObra: 900 });
+      await request(app).patch(`/api/v1/requests/${id}/adjustments/${p.body.solicitud.ajustes[0].id}`).set(auth('cli13')).send({ decision: 'rechazar' }).expect(200);
+      const antes = await prisma.perfilTrabajador.findUnique({ where: { id: S.tra13.perfilId } });
+      await request(app).post(`/api/v1/requests/${id}/complete`).set(auth('cli13')).expect(200);
+      const s = await request(app).get(`/api/v1/requests/${id}`).set(auth('cli13'));
+      expect(s.body.solicitud.montoFinal).toBe(200);
+      const despues = await prisma.perfilTrabajador.findUnique({ where: { id: S.tra13.perfilId } });
+      expect(despues.trabajosConAjusteRechazado).toBe(antes.trabajosConAjusteRechazado);
+    });
+
+    test('CA-16.14 pieza extra con foto → el cliente ve la foto; ticket más barato baja el total', async () => {
+      const id = await enCurso({ tipo: 'cerrado', manoObra: 500, material: 300, tiempoEstimadoHoras: 2 });
+      const p = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('tra13'))
+        .field('tipo', 'pieza_extra').field('deltaMaterial', '250').field('detalle', 'El contacto está quemado').attach('foto', PNG, 'f.png');
+      const aj = p.body.solicitud.ajustes[0];
+      expect(aj).toMatchObject({ tipo: 'pieza_extra', deltaMaterial: 250, tieneFoto: true, montoPropuesto: 1050 });
+      const foto = await request(app).get(`/api/v1/requests/${id}/adjustments/${aj.id}/files/foto`).set(auth('cli13'));
+      expect(foto.status).toBe(200);
+      await request(app).get(`/api/v1/requests/${id}/adjustments/${aj.id}/files/foto`).set(auth('ana')).expect(403);
+      await request(app).patch(`/api/v1/requests/${id}/adjustments/${aj.id}`).set(auth('cli13')).send({ decision: 'aceptar' }).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/adjustments/${aj.id}/ticket`).set(auth('cli13')).field('ticketMonto', '200').attach('ticket', PNG, 't.png').expect(403);
+      const t = await request(app).post(`/api/v1/requests/${id}/adjustments/${aj.id}/ticket`).set(auth('tra13')).field('ticketMonto', '200').attach('ticket', PNG, 't.png');
+      expect(t.status).toBe(200);
+      expect(t.body.solicitud.montoFinal).toBe(1000);
+      await request(app).post(`/api/v1/requests/${id}/adjustments/${aj.id}/ticket`).set(auth('tra13')).field('ticketMonto', '150').attach('ticket', PNG, 't.png').expect(409);
+    });
+
+    test('CA-16.12 "resultó más fácil" se aplica sola y avisa al cliente', async () => {
+      const id = await enCurso({ tipo: 'cerrado', manoObra: 500, material: 0, tiempoEstimadoHoras: 2 });
+      const r = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('tra13')).send({ tipo: 'mas_facil', deltaManoObra: -100 });
+      expect(r.body.solicitud.ajustes[0].estado).toBe('aceptado');
+      expect(r.body.solicitud.montoFinal).toBe(400);
+    });
+
+    test('CA-08.6 "No puedo continuar": sin foto → 409; con un aumento con foto rechazado → no se atribuye', async () => {
+      const sinFoto = await enCurso({ tipo: 'cerrado', manoObra: 500, material: 0, tiempoEstimadoHoras: 2 });
+      const a1 = await request(app).post(`/api/v1/requests/${sinFoto}/adjustments`).set(auth('tra13')).send({ tipo: 'dano_oculto', deltaManoObra: 200 });
+      await request(app).patch(`/api/v1/requests/${sinFoto}/adjustments/${a1.body.solicitud.ajustes[0].id}`).set(auth('cli13')).send({ decision: 'rechazar' });
+      const r1 = await request(app).post(`/api/v1/requests/${sinFoto}/cancel`).set(auth('tra13')).send({ motivo: 'No puedo continuar con el precio original' });
+      expect(r1.status).toBe(409);
+      expect(r1.body.error.code).toBe('SIN_EVIDENCIA');
+
+      const conFoto = await enCurso({ tipo: 'cerrado', manoObra: 500, material: 0, tiempoEstimadoHoras: 2 });
+      const a2 = await request(app).post(`/api/v1/requests/${conFoto}/adjustments`).set(auth('tra13'))
+        .field('tipo', 'dano_oculto').field('deltaManoObra', '200').attach('foto', PNG, 'f.png');
+      await request(app).patch(`/api/v1/requests/${conFoto}/adjustments/${a2.body.solicitud.ajustes[0].id}`).set(auth('cli13')).send({ decision: 'rechazar' });
+      const antes = await prisma.perfilTrabajador.findUnique({ where: { id: S.tra13.perfilId } });
+      await request(app).post(`/api/v1/requests/${conFoto}/cancel`).set(auth('tra13')).send({ motivo: 'No puedo continuar con el precio original' }).expect(200);
+      const canc = await prisma.cancelacion.findUnique({ where: { solicitudId: conFoto } });
+      expect(canc.atribuibleAlTrabajador).toBe(false);
+      const despues = await prisma.perfilTrabajador.findUnique({ where: { id: S.tra13.perfilId } });
+      expect(despues.cancelacionesAtribuibles).toBe(antes.cancelacionesAtribuibles);
+      await request(app).post(`/api/v1/requests/${sinFoto}/cancel`).set(auth('cli13')).send({ motivo: 'No puedo continuar con el precio original' }).expect(400);
+    });
+
+    test('CA-21.1 preguntas: el trabajador elegible pregunta, sin teléfonos; máximo 3; el cliente responde una vez', async () => {
+      const id = await solicitudLaPaz();
+      await request(app).post(`/api/v1/requests/${id}/questions`).set(auth('arturo')).send({ texto: '¿Es monofásico o bifásico?' }).expect(403);
+      await request(app).post(`/api/v1/requests/${id}/questions`).set(auth('tra13')).send({ texto: 'Llámame al 222 123 4567' }).expect(400);
+      const q = await request(app).post(`/api/v1/requests/${id}/questions`).set(auth('tra13')).send({ texto: '¿El horno es eléctrico o de gas?' });
+      expect(q.status).toBe(201);
+      const pid = q.body.solicitud.preguntas[0].id;
+      await request(app).post(`/api/v1/requests/${id}/questions`).set(auth('tra13')).send({ texto: '¿De qué año es la instalación?' }).expect(201);
+      await request(app).post(`/api/v1/requests/${id}/questions`).set(auth('tra13')).send({ texto: '¿Hay centro de carga con pastillas?' }).expect(201);
+      await request(app).post(`/api/v1/requests/${id}/questions`).set(auth('tra13')).send({ texto: '¿Una más por favor?' }).expect(409);
+      const r = await request(app).patch(`/api/v1/requests/${id}/questions/${pid}`).set(auth('cli13')).send({ respuesta: 'Eléctrico, de 2018' });
+      expect(r.body.solicitud.preguntas[0].respuesta).toBe('Eléctrico, de 2018');
+      await request(app).patch(`/api/v1/requests/${id}/questions/${pid}`).set(auth('cli13')).send({ respuesta: 'Otra' }).expect(409);
+    });
+
+    test('CA-17.4 la búsqueda y el perfil incluyen insignias y progreso', async () => {
+      const b = await request(app).get(`/api/v1/workers?oficioId=${cat.electricidad}&zonaId=${cat.lapaz}`).set(auth('cli13'));
+      const t = b.body.find((x) => x.id === S.tra13.perfilId);
+      expect(Array.isArray(t.insignias)).toBe(true);
+      const p = await request(app).get('/api/v1/workers/me/profile').set(auth('tra13'));
+      expect(p.body.perfil.progresoInsignias.map((x) => x.clave)).toEqual(['comprueba_gastos', 'respeta_cotizacion', 'cumplido']);
+    });
+  });
+
   describe('RNF-02 Sesiones (ADR-04)', () => {
     test('el refresh token rota: el usado ya no sirve', async () => {
       const r = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: S.ana.refresh });

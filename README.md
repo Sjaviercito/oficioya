@@ -1,7 +1,7 @@
-# OficioYa — MVP (Etapa 3)
+# OficioYa — sistema 2.3
 
 Plataforma web mobile-first que conecta clientes de Puebla con trabajadores de oficios verificados.
-Construida según el contrato técnico v0.2 (ver los cambios en la tabla de trazabilidad).
+Construida según el contrato técnico v1.3 (`docs/02-contrato-tecnico_OficioYa.md`). La v1.3 agrega cotización desglosada con vigencia, visita de diagnóstico, cambios de precio con foto y ticket, insignias y preguntas antes de cotizar (`docs/06-analisis-ajuste-de-precio_OficioYa.md`).
 
 - **backend/**: API REST en `/api/v1` — Node.js 22, Express 5, Prisma 6 (sin motor binario, adaptador `pg`) y PostgreSQL 16.
 - **frontend/**: React 18 + Vite + React Router. En producción la API sirve el frontend compilado desde el mismo dominio.
@@ -44,9 +44,11 @@ Contraseña para todos: `OficioYa2026!`
 |---|---|
 | admin@oficioya.test | Administrador (verifica identidades) |
 | cliente@oficioya.test | Cliente (tiene una solicitud abierta) |
-| trabajador@oficioya.test | Trabajador verificado de Plomería en Centro |
+| trabajador@oficioya.test | Trabajador verificado de Plomería en Centro (Arturo, con insignias "Respeta su cotización" y "Cumplido") |
+| cliente2@oficioya.test | Cliente con historial |
+| trabajadorb@ / trabajadorc@ / trabajadord@oficioya.test | Beatriz (3.49), Carlos (Nuevo) y Diego (sin verificar) |
 
-El seed también crea el escenario del CA-04.1 y CA-10.1 (Beatriz con puntuación 3.49).
+El seed solo corre con `SEED_DEMO=true` y también crea el escenario del CA-04.1 y CA-10.1 (Beatriz con puntuación 3.49).
 
 ## Pruebas automáticas
 

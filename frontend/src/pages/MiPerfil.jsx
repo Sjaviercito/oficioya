@@ -71,7 +71,28 @@ export default function MiPerfil() {
         <div className="dato"><dt>Trabajos completados</dt><dd>{perfil.trabajosCompletados}</dd></div>
         <div className="dato"><dt>Tasa de cancelación</dt><dd>{Math.round(perfil.tasaCancelacion * 100)} %</dd></div>
         <div className="dato"><dt>Con ajuste de precio</dt><dd>{perfil.porcentajeConAjuste === null ? '—' : `${perfil.porcentajeConAjuste} %`}</dd></div>
+        <div className="dato"><dt>Sobre lo cotizado</dt><dd>{perfil.sobreCotizadoPromedio == null ? 'Se mide a partir de 5 trabajos' : `Tus trabajos terminan ${perfil.sobreCotizadoPromedio} % arriba en promedio`}</dd></div>
       </dl>
+
+      {/* v1.3: insignias. No cambian el ranking; los clientes las ven al comparar cotizaciones. */}
+      {perfil.progresoInsignias && (
+        <section style={{ marginBottom: '1.5rem' }}>
+          <h2>Insignias</h2>
+          <p className="suave pequeno">Los clientes las ven al comparar cotizaciones.</p>
+          <ul className="lista" style={{ marginTop: 0 }}>
+            {perfil.progresoInsignias.map((i) => (
+              <li key={i.clave} className={`progreso-insignia${i.obtenida ? ' obtenida' : ''}`}>
+                <span className="marca" aria-hidden="true">★</span>
+                <div>
+                  <strong>{i.nombre}</strong>{i.obtenida && <span className="sello" style={{ marginLeft: '0.4rem' }}>Obtenida</span>}
+                  <div className="pequeno suave">{i.descripcion}</div>
+                  {!i.obtenida && <div className="pequeno">{i.avance}</div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <form onSubmit={guardarPerfil} key={`${perfil.id}-${oficios.length}-${zonas.length}`}>
         <fieldset>

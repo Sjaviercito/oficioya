@@ -1,7 +1,7 @@
 const { z, uuid } = require('../../shared/validacion');
 const { hoyEnPuebla } = require('../../shared/fechas');
 
-const MOTIVOS_CANCELACION = ['Ya no lo necesito', 'Encontré otra opción', 'No puedo asistir', 'Cambió el precio', 'Otro'];
+const MOTIVOS_CANCELACION = ['Ya no lo necesito', 'Encontré otra opción', 'No puedo asistir', 'Cambió el precio', 'No puedo continuar con el precio original', 'Otro'];
 
 const crear = z.object({
   oficioId: z.coerce.number({ message: 'Selecciona un oficio' }).int().positive({ message: 'Selecciona un oficio' }),

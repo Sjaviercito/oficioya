@@ -62,9 +62,11 @@ async function historial(clienteId, trabajadorId, oficio, zona, { final, diasAtr
     },
   });
   const c = await prisma.cotizacion.create({
-    data: { solicitudId: s.id, trabajadorId, monto: 850, tiempoEstimadoHoras: 3, estado: 'aceptada', creadaEn: haceDias(diasAtras + 1) },
+    data: { solicitudId: s.id, trabajadorId, tipo: 'cerrado', monto: 850, manoObra: 650, material: 200, tiempoEstimadoHoras: 3, estado: 'aceptada', creadaEn: haceDias(diasAtras + 1) },
   });
-  await prisma.solicitud.update({ where: { id: s.id }, data: { cotizacionAceptadaId: c.id } });
+  // v1.3: los trabajos de demostración terminaron en lo cotizado (cuentan para "Respeta su cotización").
+  const metricas = final === 'completada' ? { montoBase: 850, montoCerrado: 850, sobreCotizadoPct: 0 } : {};
+  await prisma.solicitud.update({ where: { id: s.id }, data: { cotizacionAceptadaId: c.id, ...metricas } });
   await prisma.perfilTrabajador.update({ where: { id: trabajadorId }, data: { solicitudesAceptadas: { increment: 1 } } });
 
   if (final === 'completada') {

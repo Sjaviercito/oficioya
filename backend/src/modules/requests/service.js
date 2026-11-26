@@ -9,8 +9,9 @@ const { validarTransicion, ESTADOS_ABIERTOS_A_COTIZACION } = require('./estados'
 const ranking = require('../ranking/service');
 
 const PLAZO_RESENA_DIAS = 30;
-const HORAS_PARA_DISPUTAR = 72; // v1.2: el cliente tiene 72 h para disputar un "terminado" del trabajador
-const { montoVigente } = require('../adjustments/reglas');
+const HORAS_PARA_DISPUTAR = 72;
+const MOTIVO_SIN_ACUERDO = 'No puedo continuar con el precio original'; // v1.3: cancelación sin penalización con evidencia
+const { montoVigente, metricasAlCompletar, TIPOS_DEL_TRABAJADOR, ETIQUETAS } = require('../adjustments/reglas');
 const { avisar } = require('../../shared/avisos');
 
 const INCLUDE_DETALLE = {
@@ -18,7 +19,8 @@ const INCLUDE_DETALLE = {
   zona: true,
   fotos: { select: { url: true } },
   cliente: { select: { id: true, nombre: true, telefono: true } },
-  cotizaciones: { select: { id: true, trabajadorId: true, estado: true, monto: true, tiempoEstimadoHoras: true, creadaEn: true } },
+  cotizaciones: { select: { id: true, trabajadorId: true, estado: true, monto: true, tiempoEstimadoHoras: true, creadaEn: true, tipo: true, manoObra: true, material: true, vigenciaDias: true, costoVisita: true, visitaAbonable: true } },
+  preguntas: { orderBy: { creadaEn: 'asc' } },
   cotizacionAceptada: { include: { trabajador: { include: { usuario: { select: { nombre: true, telefono: true } } } } } },
   cancelacion: { select: { rolQueCancela: true, motivo: true, detalle: true, fecha: true, atribuibleAlTrabajador: true } },
   resena: { select: { estrellas: true, comentario: true, creadaEn: true, respuesta: true, respondidaEn: true } },
@@ -26,6 +28,23 @@ const INCLUDE_DETALLE = {
 };
 
 const fechaISO = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+const num = (x) => (x === null || x === undefined ? null : Number(x));
+
+// v1.3: forma pública de una cotización (tipo, desglose y vigencia).
+function formaCotizacion(c) {
+  const venceEn = new Date(new Date(c.creadaEn).getTime() + c.vigenciaDias * 86400000);
+  return {
+    tipo: c.tipo,
+    monto: Number(c.monto),
+    manoObra: num(c.manoObra),
+    material: num(c.material),
+    costoVisita: num(c.costoVisita),
+    visitaAbonable: c.visitaAbonable,
+    vigenciaDias: c.vigenciaDias,
+    venceEn,
+    vencida: c.estado === 'pendiente' && venceEn.getTime() < Date.now(),
+  };
+}
 
 async function perfilTrabajadorDe(usuarioId, db = prisma) {
   return db.perfilTrabajador.findUnique({
@@ -75,27 +94,39 @@ function serializar(s, relacion, perfil) {
       ? {
           id: s.cotizacionAceptada.trabajadorId,
           nombre: s.cotizacionAceptada.trabajador.usuario.nombre,
-          monto: Number(s.cotizacionAceptada.monto),
           tiempoEstimadoHoras: s.cotizacionAceptada.tiempoEstimadoHoras,
+          ...formaCotizacion(s.cotizacionAceptada),
         }
       : null,
     // RF-16: monto vigente (cotización o último ajuste aceptado) e historial de ajustes.
     montoFinal: s.cotizacionAceptada ? montoVigente(s) : null,
     ajustes: (s.ajustes || []).map((a) => ({
       id: a.id,
+      tipo: a.tipo,
+      etiqueta: ETIQUETAS[a.tipo],
       montoAnterior: Number(a.montoAnterior),
       montoPropuesto: Number(a.montoPropuesto),
+      deltaManoObra: Number(a.deltaManoObra),
+      deltaMaterial: Number(a.deltaMaterial),
       motivo: a.motivo,
       estado: a.estado,
+      tieneFoto: Boolean(a.fotoClave),
+      tieneTicket: Boolean(a.ticketClave),
+      ticketMonto: num(a.ticketMonto),
       creadoEn: a.creadoEn,
       resueltoEn: a.resueltoEn,
+    })),
+    // RF-21: preguntas antes de cotizar (sin datos de contacto).
+    preguntas: (s.preguntas || []).map((q) => ({
+      id: q.id, texto: q.texto, respuesta: q.respuesta, creadaEn: q.creadaEn,
+      mia: Boolean(perfil && q.trabajadorId === perfil.id),
     })),
     cancelacion: s.cancelacion,
     resena: s.resena,
     diasRestantesParaResena: s.resena ? null : plazoResena,
     miRelacion: relacion,
     miCotizacion: miCotizacion
-      ? { id: miCotizacion.id, estado: miCotizacion.estado, monto: Number(miCotizacion.monto), tiempoEstimadoHoras: miCotizacion.tiempoEstimadoHoras }
+      ? { id: miCotizacion.id, estado: miCotizacion.estado, tiempoEstimadoHoras: miCotizacion.tiempoEstimadoHoras, ...formaCotizacion({ ...miCotizacion, creadaEn: miCotizacion.creadaEn }) }
       : null,
   };
   // RNF-04: la dirección exacta ni siquiera viaja en el JSON para quien no debe verla.
@@ -232,6 +263,8 @@ async function aceptar(usuarioId, solicitudId, cotizacionId) {
     await verificarClienteActivo(usuarioId, tx);
     const cot = s.cotizaciones.find((c) => c.id === cotizacionId);
     if (!cot) throw errores.badRequest('La cotización no pertenece a esta solicitud');
+    // v1.3 (LFPC art. 59): la cotización tiene vigencia.
+    if (formaCotizacion(cot).vencida) throw errores.conflict('Esta cotización ya venció; pide al trabajador que cotice de nuevo', 'COTIZACION_VENCIDA');
     const nuevo = validarTransicion('aceptar', s.estado);
 
     await cambiarEstado(tx, s, nuevo, { cotizacionAceptadaId: cot.id });
@@ -273,8 +306,13 @@ async function completarEnTx(tx, s) {
   }
   await cambiarEstado(tx, s, nuevo, { completadaEn: new Date() });
   const trabajadorId = s.cotizacionAceptada.trabajadorId;
-  const conAjuste = s.ajustes.some((a) => a.estado === 'aceptado');
-  const conRechazado = s.ajustes.some((a) => a.estado === 'rechazado');
+  // Solo cuentan los cambios atribuibles al trabajador (no lo que pidió el cliente, ni el presupuesto
+  // del diagnóstico, ni las bajas de precio).
+  const delTrabajador = (a) => TIPOS_DEL_TRABAJADOR.includes(a.tipo);
+  const conAjuste = s.ajustes.some((a) => a.estado === 'aceptado' && delTrabajador(a));
+  const conRechazado = s.ajustes.some((a) => a.estado === 'rechazado' && delTrabajador(a));
+  const metricas = metricasAlCompletar(s);
+  await tx.solicitud.update({ where: { id: s.id }, data: metricas });
   await tx.perfilTrabajador.update({
     where: { id: trabajadorId },
     data: {
@@ -322,6 +360,7 @@ async function cancelar(usuario, solicitudId, { motivo, detalle: detalleTexto })
     let trabajadorAtribuible = null;
 
     if (usuario.rol === 'cliente' && s.clienteId === usuario.id) {
+      if (motivo === MOTIVO_SIN_ACUERDO) throw errores.badRequest('Elige otro motivo de cancelación');
       accion = 'cancelarCliente';
     } else if (usuario.rol === 'trabajador') {
       const perfil = await perfilTrabajadorDe(usuario.id, tx);
@@ -333,6 +372,15 @@ async function cancelar(usuario, solicitudId, { motivo, detalle: detalleTexto })
       }
       accion = 'cancelarTrabajador';
       trabajadorAtribuible = perfil.id;
+      // v1.3: "No puedo continuar con el precio original" no se atribuye al trabajador si el cliente
+      // rechazó un aumento que tenía foto del problema como evidencia.
+      if (motivo === MOTIVO_SIN_ACUERDO) {
+        const conEvidencia = s.ajustes.some((a) => a.estado === 'rechazado' && TIPOS_DEL_TRABAJADOR.includes(a.tipo) && a.fotoClave);
+        if (!conEvidencia) {
+          throw errores.conflict('Esta opción requiere un cambio de precio rechazado que tenga foto del problema', 'SIN_EVIDENCIA');
+        }
+        trabajadorAtribuible = null;
+      }
     } else {
       throw errores.forbidden('No puedes cancelar esta solicitud');
     }
@@ -377,6 +425,7 @@ module.exports = {
   completarVencidas,
   verificarClienteActivo,
   HORAS_PARA_DISPUTAR,
+  formaCotizacion,
   perfilTrabajadorDe,
   relacionCon,
   serializar,

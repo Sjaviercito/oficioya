@@ -4,6 +4,7 @@ const storage = require('../../shared/storage');
 const { errores } = require('../../shared/errors');
 const { validarImagen } = require('../../shared/middleware/upload');
 const { compararParaBusqueda, redondear2 } = require('../ranking/calculo');
+const { reputacionDe } = require('./reputacion');
 
 const num = (d) => (d === null || d === undefined ? null : Number(d));
 // RF-17: porcentaje de trabajos completados que terminaron con ajuste aceptado (solo transparencia).
@@ -38,7 +39,9 @@ function serializarPerfil(p) {
 }
 
 async function obtenerMiPerfil(usuarioId) {
-  return serializarPerfil(await perfilDeUsuario(usuarioId));
+  const p = await perfilDeUsuario(usuarioId);
+  const rep = (await reputacionDe([p.id]))[p.id] || {};
+  return { ...serializarPerfil(p), ...rep };
 }
 
 async function guardarPerfil(usuarioId, datos, foto) {
@@ -109,6 +112,7 @@ async function buscar({ oficioId, zonaId }) {
     include: { usuario: { select: { nombre: true } }, oficios: { include: { oficio: true } } },
   });
 
+  const rep = await reputacionDe(perfiles.map((p) => p.id));
   return perfiles
     .map((p) => ({
       id: p.id,
@@ -126,6 +130,8 @@ async function buscar({ oficioId, zonaId }) {
       ...resto,
       puntuacionRanking: redondear2(puntuacionRanking),
       esNuevo: puntuacionRanking === null,
+      sobreCotizadoPromedio: rep[resto.id]?.sobreCotizadoPromedio ?? null,
+      insignias: rep[resto.id]?.insignias ?? [],
     }));
 }
 
