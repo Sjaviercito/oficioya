@@ -77,7 +77,7 @@ Por eso **el backend y el `.env` nunca se suben a ese servidor**.
 3. Sube **el contenido** de `frontend/dist` (incluido el archivo oculto `.htaccess`) a la raíz `/` del FTP.
 
 **Limitaciones del plan gratuito de Render** (reportarlas en la trazabilidad):
-- Se duerme tras 15 minutos sin uso. Desde la v1.2, `.github/workflows/mantener-despierta.yml` la mantiene despierta de 6:00 a 24:00 (Puebla) y dispara las tareas periódicas.
+- Se duerme tras 15 minutos sin uso. Desde la v1.2, `.github/workflows/mantener-despierta.yml` la mantiene despierta de 8:00 a 20:00 (Puebla), dentro de los 2,000 minutos gratuitos de GitHub Actions y dispara las tareas periódicas.
 - (Resuelto en v1.1) Las fotos e identificaciones ya no se pierden: se guardan en PostgreSQL.
 - Antes de un lanzamiento real: quitar `SEED_DEMO` de `render.yaml` y cambiar la contraseña del admin de demostración desde "Mi cuenta".
 

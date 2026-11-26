@@ -1,12 +1,14 @@
 # Mantiene despierta la API de Render (plan gratuito) en horario de uso y dispara las tareas
 # periódicas: cierre automático de trabajos a las 72 h y recálculo diario del ranking (RF-10, RF-26).
-# Horario: de 6:00 a 23:59 de Puebla (UTC-6) = 12:00–05:59 UTC. Unas 18 h al día (~560 h al mes),
-# por debajo de las 750 h gratuitas de Render. GitHub puede retrasar las ejecuciones programadas.
+# Horario: de 8:00 a 19:59 de Puebla (UTC-6) = 14:00–01:59 UTC, cada 14 min (Render se duerme a los 15).
+# En un repositorio privado GitHub Free incluye 2,000 minutos al mes y cobra cada ejecución como 1 minuto:
+# 5 pings/h × 12 h × 31 días ≈ 1,860 minutos. Si el repositorio se hace público, los minutos son
+# gratuitos y se puede ampliar el horario. GitHub puede retrasar las ejecuciones programadas.
 name: Mantener despierta la API
 
 on:
   schedule:
-    - cron: '*/10 12-23,0-5 * * *'
+    - cron: '*/14 14-23,0-1 * * *'
   workflow_dispatch:
 
 jobs:
