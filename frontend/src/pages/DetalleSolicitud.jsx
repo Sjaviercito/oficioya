@@ -139,7 +139,23 @@ export default function DetalleSolicitud() {
         <section>
           <h2>Tu calificación</h2>
           <p><strong>{'★'.repeat(s.resena.estrellas)}{'☆'.repeat(5 - s.resena.estrellas)}</strong> {s.resena.comentario}</p>
+          {s.resena.respuesta && <Aviso tipo="info">Respuesta del trabajador: {s.resena.respuesta}</Aviso>}
+          {rel === 'trabajadorAceptado' && !s.resena.respuesta && (
+            <form onSubmit={(e) => { e.preventDefault(); const respuesta = new FormData(e.currentTarget).get('respuesta').trim(); accion(() => api.post(`/requests/${id}/review/response`, { respuesta }), 'Respuesta publicada.'); }}>
+              <Campo etiqueta="Responder a la reseña" ayuda="Solo puedes responder una vez."><textarea name="respuesta" required minLength={5} maxLength={500} /></Campo>
+              <button className="boton" disabled={ocupado}>Publicar respuesta</button>
+            </form>
+          )}
         </section>
+      )}
+      {esCliente && s.trabajadorAceptado && (
+        <details style={{ marginTop: '1.5rem' }}>
+          <summary className="suave">Reportar al trabajador</summary>
+          <form onSubmit={(e) => { e.preventDefault(); const motivo = new FormData(e.currentTarget).get('motivo').trim(); accion(() => api.post(`/requests/${id}/report`, { motivo }), 'Reporte enviado. El equipo de OficioYa lo revisará.'); }}>
+            <Campo etiqueta="¿Qué pasó?" ayuda="Mínimo 10 caracteres."><textarea name="motivo" required minLength={10} maxLength={500} /></Campo>
+            <button className="boton peligro" disabled={ocupado}>Enviar reporte</button>
+          </form>
+        </details>
       )}
 
       {/* Trabajador: cotizar o iniciar */}

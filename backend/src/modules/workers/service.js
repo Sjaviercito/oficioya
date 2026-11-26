@@ -25,6 +25,7 @@ function serializarPerfil(p) {
     fotoUrl: p.fotoUrl,
     estadoVerificacion: p.estadoVerificacion,
     motivoRechazo: p.motivoRechazo,
+    suspendido: p.suspendido,
     oficios: p.oficios.map((o) => o.oficio),
     zonas: p.zonas.map((z) => z.zona),
     trabajosCompletados: p.trabajosCompletados,
@@ -101,6 +102,7 @@ async function buscar({ oficioId, zonaId }) {
   const perfiles = await prisma.perfilTrabajador.findMany({
     where: {
       estadoVerificacion: 'aprobado',
+      suspendido: false, // RF-13
       oficios: { some: { oficioId } },
       zonas: { some: { zonaId } },
     },

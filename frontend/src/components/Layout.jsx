@@ -6,10 +6,12 @@ const MENU = {
     ['/solicitudes', 'Mis solicitudes'],
     ['/solicitudes/nueva', 'Pedir un trabajo'],
     ['/buscar', 'Buscar trabajadores'],
+    ['/avisos', 'Avisos'],
   ],
   trabajador: [
     ['/trabajos', 'Trabajos'],
     ['/perfil', 'Mi perfil'],
+    ['/avisos', 'Avisos'],
   ],
   admin: [['/verificaciones', 'Verificaciones']],
 };

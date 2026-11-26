@@ -45,6 +45,7 @@ api.use('/requests/:id/quotes', require('./modules/quotes/routes'));
 api.use('/requests/:id/review', require('./modules/reviews/routes'));
 api.use('/requests/:id/adjustments', require('./modules/adjustments/routes'));
 api.use('/requests', require('./modules/requests/routes'));
+api.use('/', require('./modules/extras/routes')); // RF-11, RF-12, RF-13
 api.use((req, res, next) => next(errores.notFound('Ruta no encontrada')));
 app.use('/api/v1', api);
 

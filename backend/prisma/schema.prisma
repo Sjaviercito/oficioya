@@ -96,6 +96,7 @@ model PerfilTrabajador {
   trabajosCompletados      Int                @default(0) @map("trabajos_completados")
   // Etapa 4: trabajos completados que terminaron con un ajuste de precio aceptado (transparencia, no afecta el ranking).
   trabajosConAjuste        Int                @default(0) @map("trabajos_con_ajuste")
+  suspendido               Boolean            @default(false)
   calificacionPonderada    Decimal?           @map("calificacion_ponderada") @db.Decimal(6, 4)
   tasaCancelacion          Decimal            @default(0) @map("tasa_cancelacion") @db.Decimal(6, 4)
   puntuacionRanking        Decimal?           @map("puntuacion_ranking") @db.Decimal(6, 4)
@@ -244,6 +245,8 @@ model Resena {
   trabajadorId String   @map("trabajador_id") @db.Uuid
   estrellas    Int
   comentario   String?
+  respuesta    String?
+  respondidaEn DateTime? @map("respondida_en")
   creadaEn     DateTime @default(now()) @map("creada_en")
 
   solicitud  Solicitud        @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
@@ -269,4 +272,31 @@ model AjustePrecio {
 
   @@index([solicitudId, estado])
   @@map("ajuste_precio")
+}
+
+// RF-13: reporte de un cliente sobre un trabajador.
+model Reporte {
+  id           String   @id @default(uuid()) @db.Uuid
+  solicitudId  String   @map("solicitud_id") @db.Uuid
+  clienteId    String   @map("cliente_id") @db.Uuid
+  trabajadorId String   @map("trabajador_id") @db.Uuid
+  motivo       String
+  atendido     Boolean  @default(false)
+  creadoEn     DateTime @default(now()) @map("creado_en")
+
+  @@unique([solicitudId, clienteId])
+  @@map("reporte")
+}
+
+// RF-11: avisos dentro de la app.
+model Notificacion {
+  id          String   @id @default(uuid()) @db.Uuid
+  usuarioId   String   @map("usuario_id") @db.Uuid
+  solicitudId String?  @map("solicitud_id") @db.Uuid
+  texto       String
+  leida       Boolean  @default(false)
+  creadaEn    DateTime @default(now()) @map("creada_en")
+
+  @@index([usuarioId, leida])
+  @@map("notificacion")
 }

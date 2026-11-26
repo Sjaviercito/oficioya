@@ -12,6 +12,7 @@ import DetalleSolicitud from './pages/DetalleSolicitud';
 import Trabajos from './pages/Trabajos';
 import MiPerfil from './pages/MiPerfil';
 import Verificaciones from './pages/Verificaciones';
+import Avisos from './pages/Avisos';
 
 const INICIO = { cliente: '/solicitudes', trabajador: '/trabajos', admin: '/verificaciones' };
 
@@ -44,6 +45,7 @@ export default function App() {
 
         <Route element={<Requiere roles={['cliente', 'trabajador']} />}>
           <Route path="solicitudes/:id" element={<DetalleSolicitud />} />
+          <Route path="avisos" element={<Avisos />} />
         </Route>
 
         <Route element={<Requiere roles={['admin']} />}>

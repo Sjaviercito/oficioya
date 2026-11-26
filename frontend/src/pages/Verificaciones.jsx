@@ -16,6 +16,7 @@ export default function Verificaciones() {
   return (
     <>
       <h1>Verificaciones</h1>
+      <Reportes />
       <Aviso tipo={aviso.tipo}>{aviso.texto}</Aviso>
       {actual ? (
         <Revision
@@ -97,6 +98,31 @@ function Revision({ t, onCerrar }) {
         </Campo>
         <button className="boton peligro" disabled={ocupado}>Rechazar</button>
       </form>
+    </section>
+  );
+}
+
+// RF-13: reportes de clientes; el administrador suspende o descarta.
+function Reportes() {
+  const [lista, setLista] = useState([]);
+  const cargar = useCallback(() => { api.get('/admin/reports').then(setLista).catch(() => {}); }, []);
+  useEffect(cargar, [cargar]);
+  if (!lista.length) return null;
+  return (
+    <section>
+      <h2>Reportes de clientes</h2>
+      <ul className="lista">
+        {lista.map((r) => (
+          <li key={r.id} className="fila">
+            <div className="fila-titulo"><span>{r.trabajador.nombre}</span>{r.trabajador.suspendido && <span className="estado cancelada">Suspendido</span>}</div>
+            <p className="suave pequeno">{r.motivo}</p>
+            <div className="acciones">
+              <button className="boton peligro" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'suspender' }).then(cargar)}>Suspender trabajador</button>
+              <button className="boton secundario" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'descartar' }).then(cargar)}>Descartar</button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

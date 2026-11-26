@@ -3,14 +3,23 @@ const prisma = require('../../shared/prisma');
 const { errores } = require('../../shared/errors');
 const { validarTransicion } = require('../requests/estados');
 const solicitudes = require('../requests/service');
+const { avisar } = require('../../shared/avisos');
 
-async function crear(usuarioId, solicitudId, { monto, tiempoEstimadoHoras }) {
+async function crear(usuarioId, solicitudId, datos) {
+  const r = await crearEnTx(usuarioId, solicitudId, datos);
+  const s = await prisma.solicitud.findUnique({ where: { id: solicitudId }, select: { clienteId: true } });
+  await avisar(null, s.clienteId, 'Recibiste una cotización nueva.', solicitudId);
+  return r;
+}
+
+async function crearEnTx(usuarioId, solicitudId, { monto, tiempoEstimadoHoras }) {
   return prisma.$transaction(async (tx) => {
     const perfil = await solicitudes.perfilTrabajadorDe(usuarioId, tx);
     // CA-06.2 (interacción M1→M2): sin verificación no se cotiza.
     if (!perfil || perfil.estadoVerificacion !== 'aprobado') {
       throw errores.forbidden('Tu cuenta debe estar verificada para cotizar');
     }
+    if (perfil.suspendido) throw errores.forbidden('Tu cuenta está suspendida por reportes de clientes');
     const s = await solicitudes.cargar(solicitudId, tx);
     // CA-06.5: el oficio y la zona deben coincidir con los del trabajador.
     const coincide =

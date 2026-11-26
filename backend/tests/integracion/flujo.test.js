@@ -460,6 +460,34 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
     });
   });
 
+  describe('RF-11 / RF-12 / RF-13 Avisos, respuesta a reseñas y reportes', () => {
+    test('CA-11.1 el cliente recibe un aviso cuando le llega una cotización', async () => {
+      const r = await request(app).get('/api/v1/notifications').set(auth('luis'));
+      expect(r.status).toBe(200);
+      expect(r.body.some((n) => n.texto.includes('cotización'))).toBe(true);
+      await request(app).post('/api/v1/notifications/read').set(auth('luis')).expect(204);
+    });
+    test('CA-12.1 el trabajador calificado responde una vez; la segunda → 409; otro → 403', async () => {
+      const ok = await request(app).post(`/api/v1/requests/${S.sol1}/review/response`).set(auth(S.aceptado)).send({ respuesta: 'Gracias por la confianza' });
+      expect(ok.status).toBe(201);
+      expect(ok.body.solicitud.resena.respuesta).toBe('Gracias por la confianza');
+      await request(app).post(`/api/v1/requests/${S.sol1}/review/response`).set(auth(S.aceptado)).send({ respuesta: 'Otra respuesta' }).expect(409);
+      await request(app).post(`/api/v1/requests/${S.sol1}/review/response`).set(auth(S.rechazado)).send({ respuesta: 'No me toca responder' }).expect(403);
+    });
+    test('CA-13.1 reporte del cliente → el admin suspende → el trabajador sale de la búsqueda y no cotiza', async () => {
+      await request(app).post(`/api/v1/requests/${S.sol1}/report`).set(auth('ana')).send({ motivo: 'Cobró de más fuera de la plataforma' }).expect(201);
+      await request(app).post(`/api/v1/requests/${S.sol1}/report`).set(auth('ana')).send({ motivo: 'Cobró de más fuera de la plataforma' }).expect(409);
+      await request(app).post(`/api/v1/requests/${S.sol1}/report`).set(auth('luis')).send({ motivo: 'Reporte de alguien ajeno' }).expect(403);
+      const lista = await request(app).get('/api/v1/admin/reports').set(auth('admin'));
+      const rep = lista.body.find((x) => x.solicitudId === S.sol1);
+      await request(app).patch(`/api/v1/admin/reports/${rep.id}`).set(auth('admin')).send({ accion: 'suspender' }).expect(200);
+      const b = await request(app).get(`/api/v1/workers?oficioId=${cat.plomeria}&zonaId=${cat.centro}`).set(auth('ana'));
+      expect(b.body.map((t) => t.id)).not.toContain(S[S.aceptado].perfilId);
+      const id = await crearSolicitud('ana');
+      await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth(S.aceptado)).send({ monto: 500, tiempoEstimadoHoras: 2 }).expect(403);
+    });
+  });
+
   describe('RNF-02 Sesiones (ADR-04)', () => {
     test('el refresh token rota: el usado ya no sirve', async () => {
       const r = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: S.ana.refresh });

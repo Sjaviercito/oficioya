@@ -4,6 +4,7 @@ const prisma = require('../../shared/prisma');
 const { errores } = require('../../shared/errors');
 const solicitudes = require('../requests/service');
 const { validarPropuesta } = require('./reglas');
+const { avisar } = require('../../shared/avisos');
 
 async function proponer(usuarioId, solicitudId, { montoPropuesto, motivo }) {
   await prisma.$transaction(async (tx) => {
@@ -15,6 +16,8 @@ async function proponer(usuarioId, solicitudId, { montoPropuesto, motivo }) {
     const { montoAnterior } = validarPropuesta(s, montoPropuesto);
     await tx.ajustePrecio.create({ data: { solicitudId: s.id, montoAnterior, montoPropuesto, motivo } });
   });
+  const s = await prisma.solicitud.findUnique({ where: { id: solicitudId }, select: { clienteId: true } });
+  await avisar(null, s.clienteId, `El trabajador propone ajustar el precio a $${Number(montoPropuesto).toFixed(2)}.`, solicitudId);
   return solicitudes.detalle(solicitudId, { id: usuarioId, rol: 'trabajador' });
 }
 
@@ -30,6 +33,8 @@ async function decidir(usuarioId, solicitudId, ajusteId, { decision }) {
     });
     if (count === 0) throw errores.conflict('Este ajuste ya fue respondido', 'AJUSTE_RESUELTO');
   });
+  const s = await prisma.solicitud.findUnique({ where: { id: solicitudId }, include: { cotizacionAceptada: { include: { trabajador: true } } } });
+  await avisar(null, s.cotizacionAceptada.trabajador.usuarioId, decision === 'aceptar' ? 'El cliente aceptó tu ajuste de precio.' : 'El cliente rechazó tu ajuste; el trabajo sigue al precio original.', solicitudId);
   return solicitudes.detalle(solicitudId, { id: usuarioId, rol: 'cliente' });
 }
 

@@ -10,6 +10,7 @@ const ranking = require('../ranking/service');
 
 const PLAZO_RESENA_DIAS = 30;
 const { montoVigente } = require('../adjustments/reglas');
+const { avisar } = require('../../shared/avisos');
 
 const INCLUDE_DETALLE = {
   oficio: true,
@@ -19,7 +20,7 @@ const INCLUDE_DETALLE = {
   cotizaciones: { select: { id: true, trabajadorId: true, estado: true, monto: true, tiempoEstimadoHoras: true, creadaEn: true } },
   cotizacionAceptada: { include: { trabajador: { include: { usuario: { select: { nombre: true } } } } } },
   cancelacion: { select: { rolQueCancela: true, motivo: true, detalle: true, fecha: true, atribuibleAlTrabajador: true } },
-  resena: { select: { estrellas: true, comentario: true, creadaEn: true } },
+  resena: { select: { estrellas: true, comentario: true, creadaEn: true, respuesta: true, respondidaEn: true } },
   ajustes: { orderBy: { creadoEn: 'asc' } },
 };
 
@@ -169,6 +170,7 @@ async function disponibles(usuarioId) {
   if (!perfil || perfil.estadoVerificacion !== 'aprobado') {
     throw errores.forbidden('Tu cuenta debe estar verificada para ver solicitudes');
   }
+  if (perfil.suspendido) throw errores.forbidden('Tu cuenta está suspendida por reportes de clientes');
   const lista = await prisma.solicitud.findMany({
     where: {
       estado: { in: ESTADOS_ABIERTOS_A_COTIZACION },
@@ -211,6 +213,8 @@ async function aceptar(usuarioId, solicitudId, cotizacionId) {
     });
     await ranking.recalcularTrabajador(cot.trabajadorId, tx);
   });
+  const ganador = await prisma.solicitud.findUnique({ where: { id: solicitudId }, include: { cotizacionAceptada: { include: { trabajador: true } } } });
+  await avisar(null, ganador.cotizacionAceptada.trabajador.usuarioId, 'El cliente aceptó tu cotización. Ya puedes ver la dirección.', solicitudId);
   return detalle(solicitudId, { id: usuarioId, rol: 'cliente' });
 }
 
