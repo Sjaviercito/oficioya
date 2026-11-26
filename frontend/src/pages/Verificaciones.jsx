@@ -116,10 +116,10 @@ function Reportes() {
       <ul className="lista">
         {lista.map((r) => (
           <li key={r.id} className="fila">
-            <div className="fila-titulo"><span>{r.trabajador.nombre}</span>{r.trabajador.suspendido && <span className="estado cancelada">Suspendido</span>}</div>
+            <div className="fila-titulo"><span>{r.reportado.nombre} ({r.reportado.rol})</span>{r.reportado.suspendido && <span className="estado cancelada">Suspendido</span>}</div>
             <p className="suave pequeno">{r.motivo}</p>
             <div className="acciones">
-              <button className="boton peligro" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'suspender' }).then(cargar)}>Suspender trabajador</button>
+              <button className="boton peligro" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'suspender' }).then(cargar)}>Suspender {r.reportado.rol}</button>
               <button className="boton secundario" onClick={() => api.patch(`/admin/reports/${r.id}`, { accion: 'descartar' }).then(cargar)}>Descartar</button>
             </div>
           </li>
@@ -133,21 +133,28 @@ function Reportes() {
 function Suspendidos() {
   const [lista, setLista] = useState([]);
   const [msg, setMsg] = useState({ tipo: '', texto: '' });
-  const cargar = useCallback(() => { api.get('/admin/workers/suspended').then(setLista).catch(() => {}); }, []);
+  const cargar = useCallback(() => {
+    Promise.all([api.get('/admin/workers/suspended'), api.get('/admin/users/suspended')])
+      .then(([t, c]) => setLista([
+        ...t.map((x) => ({ id: x.trabajadorId, nombre: x.nombre, rol: 'trabajador', ruta: `/admin/workers/${x.trabajadorId}/reinstate` })),
+        ...c.map((x) => ({ id: x.usuarioId, nombre: x.nombre, rol: 'cliente', ruta: `/admin/users/${x.usuarioId}/reinstate` })),
+      ]))
+      .catch(() => {});
+  }, []);
   useEffect(cargar, [cargar]);
   if (!lista.length) return null;
   return (
     <section>
-      <h2>Trabajadores suspendidos</h2>
+      <h2>Cuentas suspendidas</h2>
       <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>
       <ul className="lista">
         {lista.map((t) => (
-          <li key={t.trabajadorId} className="fila">
-            <div className="fila-titulo"><span>{t.nombre}</span><span className="estado cancelada">Suspendido</span></div>
+          <li key={t.id} className="fila">
+            <div className="fila-titulo"><span>{t.nombre} ({t.rol})</span><span className="estado cancelada">Suspendido</span></div>
             <form onSubmit={(e) => {
               e.preventDefault();
               const motivo = new FormData(e.currentTarget).get('motivo').trim();
-              api.patch(`/admin/workers/${t.trabajadorId}/reinstate`, { motivo })
+              api.patch(t.ruta, { motivo })
                 .then(() => { setMsg({ tipo: 'ok', texto: `${t.nombre} fue reactivado.` }); cargar(); })
                 .catch((err) => setMsg({ tipo: 'error', texto: err.message }));
             }}>

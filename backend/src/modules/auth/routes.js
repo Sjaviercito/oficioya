@@ -23,5 +23,9 @@ router.post('/login', limiteLogin, c.iniciarSesion);
 router.post('/refresh', c.renovar);
 router.post('/logout', c.cerrarSesion);
 router.get('/me', requiereSesion, c.yo);
+router.post('/me/privacy', requiereSesion, c.aceptarPrivacidad);
+router.put('/me/phone', requiereSesion, c.cambiarTelefono);
+router.put('/me/password', requiereSesion, c.cambiarPassword);
+router.delete('/me', requiereSesion, c.eliminarCuenta);
 
 module.exports = router;

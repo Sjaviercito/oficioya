@@ -19,7 +19,7 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
   const auth = (s) => ({ Authorization: `Bearer ${S[s].token}` });
 
   async function registrar(nombre, rol) {
-    const r = await request(app).post('/api/v1/auth/register').send({ nombre, email: `${nombre}@prueba.test`, password: 'Prueba1234', rol });
+    const r = await request(app).post('/api/v1/auth/register').send({ nombre, email: `${nombre}@prueba.test`, password: 'Prueba1234', rol, telefono: '2221234567', aceptaPrivacidad: true });
     expect(r.status).toBe(201);
     S[nombre] = { token: r.body.accessToken, refresh: r.body.refreshToken, id: r.body.usuario.id };
     return r;
@@ -74,7 +74,7 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
       expect(r.body.accessToken).toBeTruthy();
     });
     test('CA-01.2 correo duplicado → 409', async () => {
-      const r = await request(app).post('/api/v1/auth/register').send({ nombre: 'Ana 2', email: 'ana@prueba.test', password: 'Prueba1234', rol: 'cliente' });
+      const r = await request(app).post('/api/v1/auth/register').send({ nombre: 'Ana 2', email: 'ana@prueba.test', password: 'Prueba1234', rol: 'cliente', telefono: '2221234567', aceptaPrivacidad: true });
       expect(r.status).toBe(409);
       expect(r.body.error.message).toBe('Este correo ya está registrado');
     });
@@ -546,6 +546,124 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
       const r = await request(app).get('/api/v1/admin/workers/suspended').set(auth('admin'));
       expect(r.status).toBe(200);
       expect(Array.isArray(r.body)).toBe(true);
+    });
+  });
+
+  describe('Contrato v1.2: privacidad, contacto, coordinación, reportes y baja de cuenta', () => {
+    let sol;
+    beforeAll(async () => {
+      await registrar('cli12', 'cliente');
+      await registrar('tra12', 'trabajador');
+      await perfilYVerificar('tra12', cat.plomeria, cat.lapaz);
+    });
+    async function aceptadaEnLaPaz(cliente = 'cli12') {
+      const r = await request(app).post('/api/v1/requests').set(auth(cliente))
+        .field('oficioId', String(cat.plomeria)).field('zonaId', String(cat.lapaz)).field('colonia', 'La Paz')
+        .field('direccionExacta', 'Calle Privada 7, Puebla').field('descripcion', 'Fuga en el calentador de agua del patio').field('fechaDeseada', hoy());
+      const c = await request(app).post(`/api/v1/requests/${r.body.solicitud.id}/quotes`).set(auth('tra12')).send({ monto: 600, tiempoEstimadoHoras: 2 });
+      await request(app).post(`/api/v1/requests/${r.body.solicitud.id}/accept`).set(auth(cliente)).send({ cotizacionId: c.body.cotizacion.id }).expect(200);
+      return r.body.solicitud.id;
+    }
+
+    test('CA-01.6 registro sin aceptar el aviso de privacidad → 400; teléfono inválido → 400', async () => {
+      const base = { nombre: 'Sin Aviso', email: 'sinaviso@prueba.test', password: 'Prueba1234', rol: 'cliente', telefono: '2221234567' };
+      const r1 = await request(app).post('/api/v1/auth/register').send(base);
+      expect(r1.status).toBe(400);
+      expect(r1.body.error.message).toMatch(/aviso de privacidad/);
+      await request(app).post('/api/v1/auth/register').send({ ...base, aceptaPrivacidad: true, telefono: '12345' }).expect(400);
+      const ok = await request(app).post('/api/v1/auth/register').send({ ...base, aceptaPrivacidad: true, telefono: '+52 (222) 123-4567' });
+      expect(ok.status).toBe(201);
+      expect(ok.body.usuario).toMatchObject({ telefono: '2221234567', privacidadAceptada: true });
+    });
+
+    test('CA-23.1 el contacto solo lo ven cliente y trabajador aceptado mientras el trabajo está activo', async () => {
+      sol = await aceptadaEnLaPaz();
+      const c = await request(app).get(`/api/v1/requests/${sol}`).set(auth('cli12'));
+      expect(c.body.solicitud.contacto).toEqual({ nombre: 'tra12', telefono: '2221234567' });
+      const t = await request(app).get(`/api/v1/requests/${sol}`).set(auth('tra12'));
+      expect(t.body.solicitud.contacto.nombre).toBe('cli12');
+      const busqueda = await request(app).get(`/api/v1/workers?oficioId=${cat.plomeria}&zonaId=${cat.lapaz}`).set(auth('ana'));
+      expect(JSON.stringify(busqueda.body)).not.toMatch(/2221234567/);
+      const publico = await request(app).get(`/api/v1/workers/${S.tra12.perfilId}/public`).set(auth('ana'));
+      expect(JSON.stringify(publico.body)).not.toMatch(/2221234567/);
+    });
+
+    test('CA-22.1 horario de visita: pasada → 400; el cliente la confirma', async () => {
+      await request(app).post(`/api/v1/requests/${sol}/visit`).set(auth('tra12')).send({ fechaHora: '2020-01-01T10:00:00Z' }).expect(400);
+      const manana = new Date(Date.now() + 86400000).toISOString();
+      const p = await request(app).post(`/api/v1/requests/${sol}/visit`).set(auth('tra12')).send({ fechaHora: manana });
+      expect(p.status).toBe(201);
+      expect(p.body.solicitud.visita.confirmada).toBe(false);
+      await request(app).patch(`/api/v1/requests/${sol}/visit`).set(auth('ana')).send({ decision: 'aceptar' }).expect(403);
+      const a = await request(app).patch(`/api/v1/requests/${sol}/visit`).set(auth('cli12')).send({ decision: 'aceptar' });
+      expect(a.body.solicitud.visita.confirmada).toBe(true);
+    });
+
+    test('CA-26.1 terminado por el trabajador, disputa del cliente y cierre automático a las 72 h', async () => {
+      await request(app).post(`/api/v1/requests/${sol}/finish`).set(auth('tra12')).expect(409); // aún "aceptada"
+      await request(app).post(`/api/v1/requests/${sol}/start`).set(auth('tra12')).expect(200);
+      const f = await request(app).post(`/api/v1/requests/${sol}/finish`).set(auth('tra12'));
+      expect(f.status).toBe(200);
+      expect(f.body.solicitud.horasParaDisputar).toBe(72);
+      await request(app).post(`/api/v1/requests/${sol}/finish`).set(auth('tra12')).expect(409);
+      const d = await request(app).post(`/api/v1/requests/${sol}/dispute`).set(auth('cli12')).send({ motivo: 'Todavía gotea la conexión' });
+      expect(d.body.solicitud.terminadaPorTrabajadorEn).toBeNull();
+      expect(d.body.solicitud.disputaMotivo).toBe('Todavía gotea la conexión');
+      await request(app).post(`/api/v1/requests/${sol}/finish`).set(auth('tra12')).expect(200);
+      await prisma.solicitud.update({ where: { id: sol }, data: { terminadaPorTrabajadorEn: new Date(Date.now() - 73 * 3600000) } });
+      const r = await request(app).get(`/api/v1/requests/${sol}`).set(auth('cli12'));
+      expect(r.body.solicitud.estado).toBe('completada');
+      expect(r.body.solicitud.contacto).toBeUndefined();
+    });
+
+    test('CA-10.9 un ajuste rechazado cuenta para el ranking; uno aceptado no', async () => {
+      const id = await aceptadaEnLaPaz();
+      await request(app).post(`/api/v1/requests/${id}/start`).set(auth('tra12')).expect(200);
+      const a = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('tra12')).send({ montoPropuesto: 700, motivo: 'Material adicional necesario' });
+      await request(app).patch(`/api/v1/requests/${id}/adjustments/${a.body.solicitud.ajustes[0].id}`).set(auth('cli12')).send({ decision: 'rechazar' }).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/complete`).set(auth('cli12')).expect(200);
+      const p = await prisma.perfilTrabajador.findUnique({ where: { id: S.tra12.perfilId } });
+      expect(p.trabajosConAjusteRechazado).toBe(1);
+      expect(p.trabajosConAjuste).toBe(0);
+    });
+
+    test('CA-13.3 el trabajador reporta al cliente; el admin lo suspende y ya no puede publicar; se reactiva', async () => {
+      await request(app).post(`/api/v1/requests/${sol}/report`).set(auth('tra12')).send({ motivo: 'El cliente fue agresivo en la visita' }).expect(201);
+      await request(app).post(`/api/v1/requests/${sol}/report`).set(auth('tra12')).send({ motivo: 'El cliente fue agresivo en la visita' }).expect(409);
+      const lista = await request(app).get('/api/v1/admin/reports').set(auth('admin'));
+      const rep = lista.body.find((x) => x.solicitudId === sol && x.rolReportado === 'cliente');
+      expect(rep.reportado).toMatchObject({ rol: 'cliente', nombre: 'cli12' });
+      await request(app).patch(`/api/v1/admin/reports/${rep.id}`).set(auth('admin')).send({ accion: 'suspender' }).expect(200);
+      const bloqueado = await request(app).post('/api/v1/requests').set(auth('cli12'))
+        .field('oficioId', String(cat.plomeria)).field('zonaId', String(cat.lapaz)).field('colonia', 'La Paz')
+        .field('direccionExacta', 'Calle Privada 7, Puebla').field('descripcion', 'Otra fuga en el calentador de agua').field('fechaDeseada', hoy());
+      expect(bloqueado.status).toBe(403);
+      const susp = await request(app).get('/api/v1/admin/users/suspended').set(auth('admin'));
+      expect(susp.body.map((u) => u.usuarioId)).toContain(S.cli12.id);
+      await request(app).patch(`/api/v1/admin/users/${S.cli12.id}/reinstate`).set(auth('admin')).send({ motivo: 'Se revisó y fue un malentendido' }).expect(200);
+    });
+
+    test('CA-27.1 cambiar contraseña: la actual incorrecta → 401; la nueva funciona', async () => {
+      await request(app).put('/api/v1/auth/me/password').set(auth('cli12')).send({ actual: 'mala', nueva: 'NuevaClave2026' }).expect(401);
+      const r = await request(app).put('/api/v1/auth/me/password').set(auth('cli12')).send({ actual: 'Prueba1234', nueva: 'NuevaClave2026' });
+      expect(r.status).toBe(200);
+      S.cli12.token = r.body.accessToken;
+      await request(app).post('/api/v1/auth/login').send({ email: 'cli12@prueba.test', password: 'NuevaClave2026' }).expect(200);
+    });
+
+    test('CA-28.1 eliminar cuenta: con trabajo activo → 409; contraseña mal → 401; luego no puede entrar y sus datos se borran', async () => {
+      const activa = await aceptadaEnLaPaz();
+      await request(app).delete('/api/v1/auth/me').set(auth('cli12')).send({ password: 'NuevaClave2026' }).expect(409);
+      await request(app).post(`/api/v1/requests/${activa}/cancel`).set(auth('cli12')).send({ motivo: 'Ya no lo necesito' }).expect(200);
+      await request(app).delete('/api/v1/auth/me').set(auth('cli12')).send({ password: 'mala' }).expect(401);
+      await request(app).delete('/api/v1/auth/me').set(auth('cli12')).send({ password: 'NuevaClave2026' }).expect(204);
+      await request(app).post('/api/v1/auth/login').send({ email: 'cli12@prueba.test', password: 'NuevaClave2026' }).expect(401);
+      const u = await prisma.usuario.findUnique({ where: { id: S.cli12.id } });
+      expect(u).toMatchObject({ nombre: 'Usuario eliminado', telefono: null });
+      const s = await prisma.solicitud.findUnique({ where: { id: activa } });
+      expect(s.direccionExacta).toBe('Dirección eliminada');
+      const resenas = await prisma.resena.count({ where: { trabajadorId: S.tra12.perfilId } });
+      expect(resenas).toBeGreaterThanOrEqual(0);
     });
   });
 

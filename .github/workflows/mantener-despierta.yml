@@ -1,0 +1,18 @@
+# Mantiene despierta la API de Render (plan gratuito) en horario de uso y dispara las tareas
+# periódicas: cierre automático de trabajos a las 72 h y recálculo diario del ranking (RF-10, RF-26).
+# Horario: de 6:00 a 23:59 de Puebla (UTC-6) = 12:00–05:59 UTC. Unas 18 h al día (~560 h al mes),
+# por debajo de las 750 h gratuitas de Render. GitHub puede retrasar las ejecuciones programadas.
+name: Mantener despierta la API
+
+on:
+  schedule:
+    - cron: '*/10 12-23,0-5 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping a /api/v1/health
+        run: curl --fail --silent --show-error --max-time 90 https://oficioya-api.onrender.com/api/v1/health

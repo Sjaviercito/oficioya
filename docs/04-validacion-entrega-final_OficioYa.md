@@ -8,8 +8,8 @@
 | URL del sistema final | https://equipo6.centrofuyuan.com |
 | URL de la API | https://oficioya-api.onrender.com (salud: `/api/v1/health`) |
 | Repositorio | https://github.com/Sjaviercito/oficioya (privado; pedir acceso al equipo) |
-| Versión final del sistema | 2.1 (2026-11-26) |
-| Versión final del contrato técnico | 1.1: `docs/02-contrato-tecnico_OficioYa.md` en el repositorio |
+| Versión final del sistema | 2.2 (2026-11-26) |
+| Versión final del contrato técnico | 1.2: `docs/02-contrato-tecnico_OficioYa.md` en el repositorio |
 
 ### Acceso para evaluar
 
@@ -23,6 +23,8 @@ Cuentas **ficticias**; contraseña para todas: `OficioYa2026!`
 | `trabajadorb@oficioya.test`, `trabajadorc@oficioya.test`, `trabajadord@oficioya.test` | Trabajadores de demostración del ranking (3.49, "Nuevo" y sin verificar) |
 
 > La API está en el plan gratuito de Render: si nadie la usó en 15 minutos, **la primera petición tarda cerca de un minuto**. Abrir antes `https://oficioya-api.onrender.com/api/v1/health` y esperar `{"ok":true}`.
+
+> Las cuentas de prueba existen porque Render tiene `SEED_DEMO=true` solo durante la evaluación. Sus celulares son ficticios (empiezan con 0), así que los botones de WhatsApp no le escriben a nadie real.
 
 **Cómo probar el cambio de esta etapa (ajuste de precio):**
 1. Trabajador → **Trabajos** → abrir la solicitud de Ana → enviar cotización de $800.
@@ -116,6 +118,16 @@ Prioridad: severidad (impacto en el usuario o en la seguridad) × frecuencia. Se
 | **Cambio en el código** | Migración `20261126000000_mejoras_v11` (tabla `archivo`, columna `oficio.tope_ajuste` con `CHECK`). `shared/storage/index.js` guarda y lee de la base; `/uploads` solo sirve archivos públicos. `ranking/calculo.js` (`PESO_AJUSTE`). `adjustments/reglas.js` (`topeDe`). `extras/routes.js` (perfil público, topes, suspendidos). `auth/routes.js` (límite de intentos). Frontend: `pages/Trabajador.jsx`, nombres enlazados en `TarjetaTrabajador.jsx`, secciones de topes y suspendidos en `Verificaciones.jsx`, CSP en `public/.htaccess`. |
 | **Verificación** | **105 pruebas pasando** (10 nuevas). Recorrido completo con Playwright a 360 px servido con la CSP activa: cotizar → aviso → perfil público → aceptar → ajuste $800 → $1,000 → bloqueo al confirmar con ajuste pendiente → aceptar → reseña con monto final $1,000 → respuesta del trabajador → panel → topes del admin → sexto intento de login rechazado. Sin violaciones de CSP ni desplazamiento horizontal. |
 
+### C-06: Contrato v1.2 a partir del análisis causa–consecuencia
+
+| Paso | Detalle |
+|---|---|
+| **Origen** | Revisión del equipo: no existía ningún canal para que cliente y trabajador se coordinaran (sin teléfono ni hora de visita), lo que provocaba cancelaciones atribuidas injustamente al trabajador y más ajustes de precio. Se hizo un análisis completo de causas y consecuencias de todo el sistema, apoyado en la LFPDPPP 2025, en estudios de fuga de transacciones en plataformas y en los fraudes por WhatsApp reportados en México (`docs/05-analisis-causa-consecuencia_OficioYa.md`). |
+| **Requisito o criterio afectado** | Nuevos RF-20, RF-22, RF-23, RF-26, RF-27, RF-28 y RF-29. RF-13 ahora en ambos sentidos. **RF-10 cambia otra vez:** la penalización de la v1.1 por ajustes aceptados resultó contraria a su objetivo (incentivaba cobrar el extra fuera de la plataforma) y ahora solo cuentan los ajustes rechazados. RNF-04 ampliado al celular. |
+| **Cambio en el contrato** | v1.1 → **v1.2**, sección 3.7 con reglas, endpoints y criterios (CA-01.6, CA-10.8, CA-10.9, CA-13.3, CA-22.1, CA-23.1, CA-26.1, CA-27.1, CA-28.1). Se mantiene lo que estaba fuera de alcance: **sin chat dentro de la app** (queda para el lanzamiento real), sin pagos y sin push. |
+| **Cambio en el código** | Migración `20261126100000_v12_seguridad_contacto`. Backend: `auth` (privacidad, celular, contraseña, baja con anonimización), `coordinacion/routes.js` (terminado, disputa, visita), `requests/service.js` (contacto, cierre automático a las 72 h, clientes suspendidos), `extras/routes.js` (reportes en ambos sentidos), `shared/tareas.js` (tareas del ping), `ranking/calculo.js`, `prisma/seed.js` (`SEED_DEMO`). Frontend: `Privacidad.jsx`, `Terminos.jsx`, `AceptarPrivacidad.jsx`, `Cuenta.jsx`, registro con celular y casilla de aceptación, sección de coordinación en `DetalleSolicitud.jsx`. Operación: `.github/workflows/mantener-despierta.yml`. |
+| **Verificación** | **114 pruebas pasando** (9 nuevas). Recorrido con Playwright a 360 px con CSP activa: registro bloqueado sin aceptar el aviso → registro → aviso de privacidad → cotización → aceptación con botón de WhatsApp → horario propuesto y confirmado → terminado por el trabajador → disputa → nuevo terminado → reporte del trabajador al cliente → confirmación y reseña (el contacto desaparece al completar) → admin ve el reporte → cambio de celular → eliminación de cuenta (ya no puede entrar). |
+
 ---
 
 ## 4. Trazabilidad final
@@ -131,24 +143,34 @@ Prioridad: severidad (impacto en el usuario o en la seguridad) × frecuencia. Se
 | RF-07 Estados de la solicitud | Must | CA-07.1 a CA-07.5 y CA-16.8 | `requests/estados.js`, `requests/service.js` | ✅ | Completar se bloquea con ajuste pendiente (v1.0) |
 | RF-08 Cancelaciones | Must | CA-08.1 a CA-08.5 y CA-16.9 | `requests/service.js` (`cancelar`) | ✅ | Cancelar rechaza el ajuste pendiente (v1.0) |
 | RF-09 Reseñas | Must | CA-09.1 a CA-09.6 | `modules/reviews/*` | ✅ | El formulario muestra el monto final |
-| RF-10 Recálculo del ranking | Must | CA-10.1 a CA-10.5 | `ranking/*`, `server.js` (cron 03:00) | ⚠️ | Fórmula sin cambios y verificada; el cron no corre si Render está dormido (`npm run ranking:recalc` como respaldo) |
+| RF-10 Recálculo del ranking | Must | CA-10.1 a CA-10.9 | `ranking/*`, `shared/tareas.js` | ✅ | v1.2: solo penalizan ajustes rechazados; el recálculo diario lo dispara el ping de GitHub Actions |
 | RF-11 Avisos | Should | CA-11.1, CA-11.2 | `modules/extras/routes.js`, `shared/avisos.js` · `pages/Avisos.jsx` | ✅ | Avisos dentro de la app; correo y push como mejora futura (C-04) |
 | RF-12 Respuesta a reseñas | Should | CA-12.1 | `modules/extras/routes.js` · `pages/DetalleSolicitud.jsx` | ✅ | Una respuesta por reseña (C-04) |
-| RF-13 Reportes y suspensión | Should | CA-13.1, CA-13.2 | `modules/extras/routes.js`, `workers/service.js`, `quotes/service.js` · `pages/Verificaciones.jsx` | ✅ | Suspendido no aparece ni cotiza (C-04) |
+| RF-13 Reportes y suspensión | Should | CA-13.1, CA-13.2, CA-13.3 | `modules/extras/routes.js`, `workers/service.js`, `quotes/service.js` · `pages/Verificaciones.jsx` | ✅ | Suspendido no aparece ni cotiza (C-04) |
 | RF-14 Panel del trabajador | Could | CA-14.1 | `pages/MiPerfil.jsx` | ✅ | C-02 |
 | RF-15 Historial del cliente | Could | (Etapa 3) | `GET /requests/mine` · `pages/MisSolicitudes.jsx` | ✅ | |
 | **RF-16 Ajuste de precio** | **Must** | **CA-16.1 a CA-16.9** | `modules/adjustments/*`, migración `20261125000000_ajuste_precio` · `pages/DetalleSolicitud.jsx` | ✅ | **Nuevo (C-01)** |
 | **RF-17 Porcentaje con ajuste** | **Should** | **CA-17.1, CA-17.2, CA-10.6, CA-10.7** | `workers/service.js`, `quotes/service.js`, `ranking/calculo.js` · `TarjetaTrabajador.jsx`, `MiPerfil.jsx` | ✅ | **Nuevo (C-01)**; desde v1.1 pesa hasta −10 % en el ranking |
 | **RF-18 Perfil público** | **Should** | **CA-18.1** | `extras/routes.js` · `pages/Trabajador.jsx` | ✅ | **Nuevo (C-05)** |
 | **RF-19 Tope por oficio** | **Could** | **CA-19.1** | `adjustments/reglas.js`, `extras/routes.js` · `pages/Verificaciones.jsx` | ✅ | **Nuevo (C-05)** |
+| **RF-20 Celular** | **Must** | **CA-01.6** | `auth/schemas.js`, `auth/service.js` · `Registro.jsx`, `Cuenta.jsx` | ✅ | Sin verificación por código (requiere SMS, fuera de alcance) |
+| RF-21 Preguntas antes de cotizar | Should | — | — | ❌ | Pendiente P2 |
+| **RF-22 Horario de visita** | **Should** | **CA-22.1** | `coordinacion/routes.js` · `DetalleSolicitud.jsx` | ✅ | **Nuevo (C-06)** |
+| **RF-23 Contacto directo** | **Must** | **CA-23.1** | `requests/service.js` (`serializar`) · `DetalleSolicitud.jsx` | ✅ | WhatsApp y llamada; sin chat |
+| RF-24 Confirmación del monto pagado | Should | — | — | ❌ | Pendiente P2 |
+| RF-25 Volver a contratar | Could | — | — | ❌ | Pendiente P3 |
+| **RF-26 Terminado por el trabajador** | **Must** | **CA-26.1** | `coordinacion/routes.js`, `requests/service.js` (`completarVencidas`) | ✅ | **Nuevo (C-06)** |
+| **RF-27 Cambiar contraseña** | **Must** | **CA-27.1** | `auth/service.js` · `Cuenta.jsx` | ✅ | **Nuevo (C-06)** |
+| **RF-28 Eliminar cuenta** | **Must** | **CA-28.1** | `auth/service.js` (`eliminarCuenta`) · `Cuenta.jsx` | ✅ | **Nuevo (C-06)** |
+| **RF-29 Aviso de privacidad** | **Must** | **CA-01.6** | `auth/*` · `Privacidad.jsx`, `Terminos.jsx`, `AceptarPrivacidad.jsx` | ✅ | **Nuevo (C-06)**; el contacto del responsable debe completarse antes de un lanzamiento real |
 
-**Resumen:** 19 RF: **18 ✅**, **1 ⚠️** (RF-10, por el cron en Render dormido), **0 ❌**.
+**Resumen:** 29 RF: **26 ✅**, **0 ⚠️**, **3 ❌** (RF-21, RF-24 y RF-25: mejoras P2 y P3 del análisis, documentadas como pendientes).
 
 | Prioridad | Total | ✅ | ⚠️ | ❌ |
 |---|---|---|---|---|
-| Must | 11 | 10 | 1 | 0 |
-| Should | 5 | 5 | 0 | 0 |
-| Could | 3 | 3 | 0 | 0 |
+| Must | 17 | 17 | 0 | 0 |
+| Should | 8 | 6 | 0 | 2 |
+| Could | 4 | 3 | 0 | 1 |
 
 **Requisitos no funcionales:**
 
@@ -200,7 +222,7 @@ El frontend es estático y se sirve desde el subdominio del curso. Toda la lógi
 | Frontend | React 18.3, React Router 7, Vite 6.4 |
 | Backend | Node.js 22+ (probado en 22 y 26), Express 5, zod 4, multer 2, helmet 8, jsonwebtoken 9, bcryptjs 3, node-cron 4 |
 | Datos | Prisma 6.19 (cliente sin motor binario + `@prisma/adapter-pg`), PostgreSQL 16 (Neon) |
-| Pruebas | Jest 29, Supertest 7 (105 pruebas), Playwright (revisión de interfaz) |
+| Pruebas | Jest 29, Supertest 7 (114 pruebas), Playwright (revisión de interfaz) |
 | Despliegue | Render (API, plan gratuito, `render.yaml`), servidor Apache del curso (frontend), GitHub |
 
 ### 6.3 Ejecución local
@@ -210,8 +232,8 @@ El frontend es estático y se sirve desde el subdominio del curso. Toda la lógi
 cd backend
 cp .env.example .env              # llenar DATABASE_URL, JWT_SECRET e IDENTITY_ENC_KEY
 npm install
-npx prisma migrate deploy         # aplica las 5 migraciones
-npm run db:seed                   # datos ficticios (solo si la base está vacía)
+npx prisma migrate deploy         # aplica las 6 migraciones
+SEED_DEMO=true npm run db:seed    # cuentas de demostración ficticias (solo si se pide)
 npm run dev                       # http://localhost:3000
 
 # Frontend (otra terminal)
@@ -248,18 +270,26 @@ DATABASE_URL_TEST="postgresql://.../oficioya_test" npm test
 | Contrato 0.1 → 0.2 | 2026-09-22 → 2026-10-06 | Visión y contrato técnico: ADR, modelo de datos, máquina de estados y criterios con datos concretos |
 | Sistema 1.0 (MVP) / contrato 0.3 | 2026-11-04 | RF-01 a RF-10 y RF-15; 73 pruebas; despliegue frontend + Render + Neon; incidente del `.env` y rotación de claves; dependencias recortadas de 190 MB a 27 MB |
 | Sistema 2.0 / contrato 1.0 | 2026-11-25 | **RF-16 ajuste de precio** con aprobación del cliente y **RF-17 porcentaje con ajuste** (C-01); RF-14 panel completo (C-02); mensaje de error claro cuando la API no responde (C-03); avisos en la app, respuesta a reseñas y reportes con suspensión (C-04, RF-11 a RF-13); 98 pruebas |
+| Sistema 2.2 / contrato 1.2 | 2026-11-26 | Análisis causa–consecuencia (C-06): aviso de privacidad, celular y contacto por WhatsApp, horario de visita, terminado por el trabajador con 72 h, reportes en ambos sentidos, cambiar contraseña, eliminar cuenta, ranking solo con ajustes rechazados, demo controlada, ping de disponibilidad; 114 pruebas |
 | Sistema 2.1 / contrato 1.1 | 2026-11-26 | Archivos persistentes en PostgreSQL, perfil público (RF-18), tope por oficio (RF-19), ajustes en el ranking, avisos por oficio y zona, reactivación de suspendidos, límite de intentos de login, CSP; 105 pruebas |
 
 ### 6.6 Pendientes conocidos
 
+Priorizados en `docs/05-analisis-causa-consecuencia_OficioYa.md`.
+
 | Pendiente | Impacto | Propuesta |
 |---|---|---|
-| RF-11 solo dentro de la app | Sin correo ni notificaciones push | Correo con Resend o SendGrid |
-| Espacio de archivos | Las imágenes ocupan la base de datos (1 GB gratuito) | Migrar `shared/storage` a un bucket privado si crece el uso |
-| H-07 API dormida | ~1 minuto en la primera petición | Plan de pago, o un ping programado (por ejemplo cron-job.org) que también dispare el recálculo de las 03:00 (RF-10) |
-| H-04 Seed en producción | Las cuentas de prueba pueden no existir si la base se reinicia | Script de seed idempotente que agregue solo los usuarios de prueba faltantes |
-| RNF-01 sin k6, RNF-05 sin celular real | Rendimiento y compatibilidad sin evidencia formal | Correr k6 contra Render con 500 trabajadores semilla; capturas en Android e iPhone |
-| Seguridad | Refresh token en `localStorage` (mitigado con CSP); el límite de intentos vive en memoria y se reinicia con la API | Servir frontend y API en el mismo dominio para usar cookie `HttpOnly`; límite de intentos en la base |
+| Chat dentro de la app | Lo acordado por WhatsApp no queda registrado | Para el lanzamiento real; hoy fuera de alcance |
+| RF-21 Preguntas antes de cotizar | Cotizaciones a ciegas → más ajustes | Preguntas y respuestas visibles para todos los que cotizan |
+| RF-24 Confirmación del monto pagado | Un cobro acordado por fuera no se detecta | Ambas partes confirman el monto al terminar; si no coincide, revisión del admin |
+| RF-25 Volver a contratar | La segunda contratación ocurre fuera de la plataforma | Botón que crea la solicitud directa al mismo trabajador |
+| Celular sin verificar con código | Un número falso o ajeno | SMS con código (requiere proveedor) |
+| Avisos solo dentro de la app | El trabajador no se entera a tiempo de solicitudes nuevas | Correo o WhatsApp Business (requiere proveedor) |
+| Datos del responsable en el aviso de privacidad | Falta el correo de contacto real | Completar `frontend/src/legal.js` y revisarlo con un abogado |
+| Retención de INE | Se guardan mientras la cuenta exista | Borrarlas 30 días después de la verificación |
+| Imágenes en la base de datos | Llenan el espacio gratuito de Neon | Comprimir en el navegador; migrar a almacenamiento de objetos al crecer |
+| Trabajadores nuevos al final del ranking | No consiguen su primer trabajo | Intercalar "Nuevo" en los resultados |
+| Admin de demostración con contraseña conocida | Riesgo si llegan usuarios reales | Quitar `SEED_DEMO` y cambiar la contraseña al terminar la evaluación |
 
 ### 6.7 Mejoras del contrato v1.1
 

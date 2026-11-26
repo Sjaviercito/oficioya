@@ -42,7 +42,7 @@ describe('Validaciones de entrada', () => {
   };
 
   test('CA-01.4 contraseña de 7 caracteres se rechaza y de 8 se acepta', () => {
-    const base = { nombre: 'Ana', email: 'ana@correo.com', rol: 'cliente' };
+    const base = { nombre: 'Ana', email: 'ana@correo.com', rol: 'cliente', telefono: '2221234567', aceptaPrivacidad: true };
     expect(primerMensaje(auth.registro, { ...base, password: '1234567' })).toBe('La contraseña debe tener al menos 8 caracteres');
     expect(primerMensaje(auth.registro, { ...base, password: '12345678' })).toBeNull();
   });

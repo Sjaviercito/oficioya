@@ -16,6 +16,10 @@ services:
         value: production
       - key: FORCE_HTTPS
         value: "true"
+      # Solo para la evaluación del curso: crea las cuentas de demostración. Para un lanzamiento
+      # real, eliminar esta variable y cambiar la contraseña del admin (análisis D1/D2).
+      - key: SEED_DEMO
+        value: "true"
       - key: CORS_ORIGIN
         value: https://equipo6.centrofuyuan.com,http://equipo6.centrofuyuan.com,http://localhost:5173
       - key: DATABASE_URL

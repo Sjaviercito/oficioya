@@ -25,7 +25,7 @@ cp .env.example .env
 # 3. Dependencias, migraciones y datos de prueba
 npm install            # también ejecuta "prisma generate"
 npx prisma migrate deploy
-npm run db:seed
+SEED_DEMO=true npm run db:seed     # cuentas de demostración (solo si se pide)
 
 # 4. API (puerto 3000)
 npm run dev
@@ -77,9 +77,9 @@ Por eso **el backend y el `.env` nunca se suben a ese servidor**.
 3. Sube **el contenido** de `frontend/dist` (incluido el archivo oculto `.htaccess`) a la raíz `/` del FTP.
 
 **Limitaciones del plan gratuito de Render** (reportarlas en la trazabilidad):
-- Se duerme tras 15 minutos sin uso; la primera petición tarda cerca de un minuto.
+- Se duerme tras 15 minutos sin uso. Desde la v1.2, `.github/workflows/mantener-despierta.yml` la mantiene despierta de 6:00 a 24:00 (Puebla) y dispara las tareas periódicas.
 - (Resuelto en v1.1) Las fotos e identificaciones ya no se pierden: se guardan en PostgreSQL.
-- El recálculo de las 03:00 no corre si el servicio está dormido; se puede ejecutar a mano con `npm run ranking:recalc`.
+- Antes de un lanzamiento real: quitar `SEED_DEMO` de `render.yaml` y cambiar la contraseña del admin de demostración desde "Mi cuenta".
 
 ## Reglas de seguridad del proyecto
 

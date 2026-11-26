@@ -7,6 +7,11 @@ const prisma = require('../src/shared/prisma');
 const { recalcularTrabajador } = require('../src/modules/ranking/service');
 
 const PASSWORD_DEMO = 'OficioYa2026!';
+const { VERSION_PRIVACIDAD } = require('../src/modules/auth/service');
+// Teléfonos ficticios que empiezan con 0: ningún número real de México empieza así, así que un
+// botón de WhatsApp de demostración nunca le escribe a una persona real.
+let contadorTelefono = 0;
+const telefonoDemo = (i = contadorTelefono++) => `00000000${String(i).padStart(2, '0')}`;
 const DIA = 24 * 60 * 60 * 1000;
 const haceDias = (n) => new Date(Date.now() - n * DIA);
 const enDias = (n) => new Date(new Date(Date.now() + n * DIA).toISOString().slice(0, 10) + 'T00:00:00Z');
@@ -16,7 +21,11 @@ const ZONAS = ['Centro', 'La Paz', 'Angelópolis', 'San Manuel', 'Huexotitla', '
 
 async function usuario(nombre, email, rol, hash) {
   return prisma.usuario.create({
-    data: { nombre, email, rol, passwordHash: hash, ...(rol === 'trabajador' ? { perfilTrabajador: { create: {} } } : {}) },
+    data: {
+      nombre, email, rol, passwordHash: hash,
+      telefono: telefonoDemo(), privacidadAceptadaEn: new Date(), privacidadVersion: VERSION_PRIVACIDAD,
+      ...(rol === 'trabajador' ? { perfilTrabajador: { create: {} } } : {}),
+    },
     include: { perfilTrabajador: true },
   });
 }
@@ -86,10 +95,27 @@ async function historial(clienteId, trabajadorId, oficio, zona, { final, diasAtr
 }
 
 async function main() {
-  // Idempotente: si ya existen las cuentas de prueba no hace nada; si faltan, las crea aunque
-  // haya usuarios reales registrados (H-04 de la Etapa 4).
+  // v1.2 (D1/D2): las cuentas de demostración solo se crean si se pide explícitamente.
+  // En un lanzamiento real, SEED_DEMO no se define y no existe ningún admin con contraseña conocida.
+  if (process.env.SEED_DEMO !== 'true') {
+    console.log('SEED_DEMO no está activo: no se crean cuentas de demostración.');
+    return;
+  }
+  // Idempotente: si ya existen las cuentas de prueba solo completa los datos nuevos de la v1.2
+  // (teléfono ficticio y aceptación del aviso de privacidad) y termina.
   if (await prisma.usuario.findUnique({ where: { email: 'admin@oficioya.test' } })) {
-    console.log('Las cuentas de prueba ya existen; el seed no se vuelve a ejecutar.');
+    const demo = await prisma.usuario.findMany({ where: { email: { endsWith: '@oficioya.test' } }, orderBy: { email: 'asc' } });
+    for (const [i, u] of demo.entries()) {
+      await prisma.usuario.update({
+        where: { id: u.id },
+        data: {
+          telefono: u.telefono || telefonoDemo(i),
+          privacidadAceptadaEn: u.privacidadAceptadaEn || new Date(),
+          privacidadVersion: VERSION_PRIVACIDAD,
+        },
+      });
+    }
+    console.log('Las cuentas de prueba ya existen; se actualizaron sus datos de la v1.2.');
     return;
   }
   const hash = await bcrypt.hash(PASSWORD_DEMO, 10);

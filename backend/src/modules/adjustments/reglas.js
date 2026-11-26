@@ -20,6 +20,9 @@ function validarPropuesta(solicitud, montoPropuesto) {
   if (solicitud.estado !== 'en_curso') {
     throw errores.conflict('Solo se puede proponer un ajuste con el trabajo en curso', 'TRANSICION_INVALIDA');
   }
+  if (solicitud.terminadaPorTrabajadorEn) {
+    throw errores.conflict('Ya marcaste el trabajo como terminado; no se pueden proponer ajustes', 'TRABAJO_TERMINADO');
+  }
   if ((solicitud.ajustes || []).some((a) => a.estado === 'pendiente')) {
     throw errores.conflict('Ya hay un ajuste pendiente de respuesta del cliente', 'AJUSTE_PENDIENTE');
   }

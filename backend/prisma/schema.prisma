@@ -59,6 +59,12 @@ model Usuario {
   passwordHash String   @map("password_hash")
   rol          Rol
   creadoEn     DateTime @default(now()) @map("creado_en")
+  // v1.2: contacto, consentimiento de privacidad, suspensión de clientes y baja de cuenta.
+  telefono             String?
+  privacidadAceptadaEn DateTime? @map("privacidad_aceptada_en")
+  privacidadVersion    String?   @map("privacidad_version")
+  suspendido           Boolean   @default(false)
+  eliminadoEn          DateTime? @map("eliminado_en")
 
   perfilTrabajador PerfilTrabajador?
   solicitudes      Solicitud[]       @relation("SolicitudCliente")
@@ -96,6 +102,8 @@ model PerfilTrabajador {
   trabajosCompletados      Int                @default(0) @map("trabajos_completados")
   // Etapa 4: trabajos completados que terminaron con un ajuste de precio aceptado (transparencia, no afecta el ranking).
   trabajosConAjuste        Int                @default(0) @map("trabajos_con_ajuste")
+  // v1.2: trabajos que terminaron con al menos un ajuste RECHAZADO por el cliente (esto sí pesa en el ranking).
+  trabajosConAjusteRechazado Int              @default(0) @map("trabajos_con_ajuste_rechazado")
   suspendido               Boolean            @default(false)
   calificacionPonderada    Decimal?           @map("calificacion_ponderada") @db.Decimal(6, 4)
   tasaCancelacion          Decimal            @default(0) @map("tasa_cancelacion") @db.Decimal(6, 4)
@@ -182,6 +190,12 @@ model Solicitud {
   cotizacionAceptadaId String?         @unique @map("cotizacion_aceptada_id") @db.Uuid
   creadaEn             DateTime        @default(now()) @map("creada_en")
   completadaEn         DateTime?       @map("completada_en")
+  // v1.2: el trabajador marca "terminado"; el cliente tiene 72 h para disputar.
+  terminadaPorTrabajadorEn DateTime?   @map("terminada_por_trabajador_en")
+  disputaMotivo        String?         @map("disputa_motivo")
+  // v1.2: horario de visita propuesto por el trabajador y confirmado por el cliente.
+  visitaPropuesta      DateTime?       @map("visita_propuesta")
+  visitaConfirmada     Boolean         @default(false) @map("visita_confirmada")
 
   cliente            Usuario          @relation("SolicitudCliente", fields: [clienteId], references: [id])
   oficio             Oficio           @relation(fields: [oficioId], references: [id])
@@ -285,8 +299,10 @@ model Reporte {
   motivo       String
   atendido     Boolean  @default(false)
   creadoEn     DateTime @default(now()) @map("creado_en")
+  // v1.2: reportes en ambos sentidos. "trabajador" = el cliente reporta al trabajador; "cliente" = al revés.
+  rolReportado String   @default("trabajador") @map("rol_reportado")
 
-  @@unique([solicitudId, clienteId])
+  @@unique([solicitudId, rolReportado])
   @@map("reporte")
 }
 

@@ -15,6 +15,7 @@ export default function Registro() {
   async function enviar(e) {
     e.preventDefault();
     const datos = Object.fromEntries(new FormData(e.currentTarget));
+    datos.aceptaPrivacidad = datos.aceptaPrivacidad === 'on';
     setError('');
     setEnviando(true);
     try {
@@ -45,9 +46,16 @@ export default function Registro() {
         <Campo etiqueta="Correo">
           <input name="email" type="email" autoComplete="email" required />
         </Campo>
+        <Campo etiqueta="Celular" ayuda="10 dígitos. Solo lo verá la otra parte de un trabajo aceptado.">
+          <input name="telefono" type="tel" inputMode="numeric" autoComplete="tel-national" required />
+        </Campo>
         <Campo etiqueta="Contraseña" ayuda="Mínimo 8 caracteres.">
           <input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} />
         </Campo>
+        <label className="opcion" style={{ borderRadius: 'var(--radio)', alignItems: 'flex-start' }}>
+          <input type="checkbox" name="aceptaPrivacidad" required style={{ marginTop: '0.3rem' }} />
+          <span>Acepto el <Link to="/privacidad" target="_blank">aviso de privacidad</Link> y los <Link to="/terminos" target="_blank">términos y condiciones</Link></span>
+        </label>
         <button className="boton accion ancho" disabled={enviando}>{enviando ? 'Creando cuenta…' : 'Crear cuenta'}</button>
       </form>
       <p className="suave" style={{ marginTop: '1rem' }}>¿Ya tienes cuenta? <Link to="/entrar">Entra</Link></p>

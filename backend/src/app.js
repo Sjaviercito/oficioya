@@ -47,7 +47,13 @@ app.use('/uploads', async (req, res, next) => {
 });
 
 const api = express.Router();
-api.get('/health', (req, res) => res.json({ ok: true }));
+// El ping externo (cada 10 min) mantiene la API despierta y de paso ejecuta las tareas periódicas
+// que un cron interno no puede garantizar en el plan gratuito.
+const { tareasPeriodicas } = require('./shared/tareas');
+api.get('/health', (req, res) => {
+  tareasPeriodicas().catch((e) => console.error('[tareas]', e.message));
+  res.json({ ok: true });
+});
 api.use('/auth', require('./modules/auth/routes'));
 api.use('/catalog', require('./modules/catalog/routes'));
 api.use('/workers', require('./modules/workers/routes'));
@@ -55,6 +61,7 @@ api.use('/admin', require('./modules/admin/routes'));
 api.use('/requests/:id/quotes', require('./modules/quotes/routes'));
 api.use('/requests/:id/review', require('./modules/reviews/routes'));
 api.use('/requests/:id/adjustments', require('./modules/adjustments/routes'));
+api.use('/requests/:id', require('./modules/coordinacion/routes')); // v1.2
 api.use('/requests', require('./modules/requests/routes'));
 api.use('/', require('./modules/extras/routes')); // RF-11, RF-12, RF-13
 api.use((req, res, next) => next(errores.notFound('Ruta no encontrada')));

@@ -9,6 +9,7 @@ const { validarTransicion, ESTADOS_ABIERTOS_A_COTIZACION } = require('./estados'
 const ranking = require('../ranking/service');
 
 const PLAZO_RESENA_DIAS = 30;
+const HORAS_PARA_DISPUTAR = 72; // v1.2: el cliente tiene 72 h para disputar un "terminado" del trabajador
 const { montoVigente } = require('../adjustments/reglas');
 const { avisar } = require('../../shared/avisos');
 
@@ -16,9 +17,9 @@ const INCLUDE_DETALLE = {
   oficio: true,
   zona: true,
   fotos: { select: { url: true } },
-  cliente: { select: { id: true, nombre: true } },
+  cliente: { select: { id: true, nombre: true, telefono: true } },
   cotizaciones: { select: { id: true, trabajadorId: true, estado: true, monto: true, tiempoEstimadoHoras: true, creadaEn: true } },
-  cotizacionAceptada: { include: { trabajador: { include: { usuario: { select: { nombre: true } } } } } },
+  cotizacionAceptada: { include: { trabajador: { include: { usuario: { select: { nombre: true, telefono: true } } } } } },
   cancelacion: { select: { rolQueCancela: true, motivo: true, detalle: true, fecha: true, atribuibleAlTrabajador: true } },
   resena: { select: { estrellas: true, comentario: true, creadaEn: true, respuesta: true, respondidaEn: true } },
   ajustes: { orderBy: { creadoEn: 'asc' } },
@@ -99,6 +100,23 @@ function serializar(s, relacion, perfil) {
   };
   // RNF-04: la dirección exacta ni siquiera viaja en el JSON para quien no debe verla.
   if (verDireccion) salida.direccionExacta = s.direccionExacta;
+
+  // v1.2: contacto directo (RNF-04 ampliado). Solo cliente dueño y trabajador aceptado, y solo
+  // mientras el trabajo está activo; el teléfono nunca viaja para nadie más.
+  const activo = ['aceptada', 'en_curso'].includes(s.estado);
+  if (activo && s.cotizacionAceptada && relacion === 'clienteDueno') {
+    salida.contacto = { nombre: s.cotizacionAceptada.trabajador.usuario.nombre, telefono: s.cotizacionAceptada.trabajador.usuario.telefono };
+  } else if (activo && relacion === 'trabajadorAceptado') {
+    salida.contacto = { nombre: s.cliente.nombre, telefono: s.cliente.telefono };
+  }
+
+  // v1.2: horario de visita y "terminado" marcado por el trabajador.
+  salida.visita = s.visitaPropuesta ? { fechaHora: s.visitaPropuesta, confirmada: s.visitaConfirmada } : null;
+  salida.terminadaPorTrabajadorEn = s.terminadaPorTrabajadorEn;
+  salida.horasParaDisputar = s.terminadaPorTrabajadorEn && s.estado === 'en_curso'
+    ? Math.max(0, Math.ceil(HORAS_PARA_DISPUTAR - (Date.now() - new Date(s.terminadaPorTrabajadorEn).getTime()) / 3600000))
+    : null;
+  salida.disputaMotivo = s.disputaMotivo;
   return salida;
 }
 
@@ -108,7 +126,13 @@ async function cargar(id, db = prisma) {
   return s;
 }
 
+async function verificarClienteActivo(clienteId, db = prisma) {
+  const u = await db.usuario.findUnique({ where: { id: clienteId }, select: { suspendido: true } });
+  if (!u || u.suspendido) throw errores.forbidden('Tu cuenta está suspendida por reportes de trabajadores');
+}
+
 async function crear(clienteId, datos, fotos = []) {
+  await verificarClienteActivo(clienteId);
   const [oficio, zona] = await Promise.all([
     prisma.oficio.findUnique({ where: { id: datos.oficioId } }),
     prisma.zona.findUnique({ where: { id: datos.zonaId } }),
@@ -143,6 +167,7 @@ async function crear(clienteId, datos, fotos = []) {
 }
 
 async function detalle(id, usuario) {
+  await completarVencidas();
   const s = await cargar(id);
   const perfil = usuario.rol === 'trabajador' ? await perfilTrabajadorDe(usuario.id) : null;
   const relacion = relacionCon(s, usuario, perfil);
@@ -152,6 +177,7 @@ async function detalle(id, usuario) {
 
 // "Mis solicitudes": del cliente (las suyas) o del trabajador (donde cotizó).
 async function mias(usuario) {
+  await completarVencidas();
   if (usuario.rol === 'cliente') {
     const lista = await prisma.solicitud.findMany({
       where: { clienteId: usuario.id },
@@ -203,6 +229,7 @@ async function aceptar(usuarioId, solicitudId, cotizacionId) {
   await prisma.$transaction(async (tx) => {
     const s = await cargar(solicitudId, tx);
     if (s.clienteId !== usuarioId) throw errores.forbidden('Solo quien publicó la solicitud puede aceptar cotizaciones');
+    await verificarClienteActivo(usuarioId, tx);
     const cot = s.cotizaciones.find((c) => c.id === cotizacionId);
     if (!cot) throw errores.badRequest('La cotización no pertenece a esta solicitud');
     const nuevo = validarTransicion('aceptar', s.estado);
@@ -237,24 +264,52 @@ async function iniciar(usuarioId, solicitudId) {
   return detalle(solicitudId, { id: usuarioId, rol: 'trabajador' });
 }
 
+// Lógica común de completar (confirmación del cliente o vencimiento de las 72 h).
+async function completarEnTx(tx, s) {
+  const nuevo = validarTransicion('completar', s.estado);
+  // CA-16.8: no se completa el trabajo con un ajuste sin responder.
+  if (s.ajustes.some((a) => a.estado === 'pendiente')) {
+    throw errores.conflict('Responde el ajuste de precio pendiente antes de confirmar que el trabajo terminó', 'AJUSTE_PENDIENTE');
+  }
+  await cambiarEstado(tx, s, nuevo, { completadaEn: new Date() });
+  const trabajadorId = s.cotizacionAceptada.trabajadorId;
+  const conAjuste = s.ajustes.some((a) => a.estado === 'aceptado');
+  const conRechazado = s.ajustes.some((a) => a.estado === 'rechazado');
+  await tx.perfilTrabajador.update({
+    where: { id: trabajadorId },
+    data: {
+      trabajosCompletados: { increment: 1 },
+      ...(conAjuste ? { trabajosConAjuste: { increment: 1 } } : {}),
+      ...(conRechazado ? { trabajosConAjusteRechazado: { increment: 1 } } : {}),
+    },
+  });
+  await ranking.recalcularTrabajador(trabajadorId, tx);
+}
+
+// v1.2: completa los trabajos que el trabajador marcó como terminados hace más de 72 h sin disputa.
+async function completarVencidas(ahora = new Date()) {
+  const limite = new Date(ahora.getTime() - HORAS_PARA_DISPUTAR * 3600000);
+  const vencidas = await prisma.solicitud.findMany({
+    where: { estado: 'en_curso', terminadaPorTrabajadorEn: { lte: limite }, ajustes: { none: { estado: 'pendiente' } } },
+    select: { id: true, clienteId: true },
+  });
+  for (const v of vencidas) {
+    try {
+      await prisma.$transaction(async (tx) => completarEnTx(tx, await cargar(v.id, tx)));
+      await avisar(null, v.clienteId, 'Tu trabajo se dio por terminado porque no respondiste en 72 horas. Ya puedes calificarlo.', v.id);
+    } catch (e) {
+      if (e.status !== 409) console.error('[completarVencidas]', e.message);
+    }
+  }
+  return vencidas.length;
+}
+
 // RF-07: el cliente confirma que el trabajo terminó; se habilita la reseña.
 async function completar(usuarioId, solicitudId) {
   await prisma.$transaction(async (tx) => {
     const s = await cargar(solicitudId, tx);
     if (s.clienteId !== usuarioId) throw errores.forbidden('Solo quien publicó la solicitud puede confirmar que terminó');
-    const nuevo = validarTransicion('completar', s.estado);
-    // CA-16.8: no se confirma el trabajo con un ajuste sin responder.
-    if (s.ajustes.some((a) => a.estado === 'pendiente')) {
-      throw errores.conflict('Responde el ajuste de precio pendiente antes de confirmar que el trabajo terminó', 'AJUSTE_PENDIENTE');
-    }
-    await cambiarEstado(tx, s, nuevo, { completadaEn: new Date() });
-    const trabajadorId = s.cotizacionAceptada.trabajadorId;
-    const conAjuste = s.ajustes.some((a) => a.estado === 'aceptado');
-    await tx.perfilTrabajador.update({
-      where: { id: trabajadorId },
-      data: { trabajosCompletados: { increment: 1 }, ...(conAjuste ? { trabajosConAjuste: { increment: 1 } } : {}) },
-    });
-    await ranking.recalcularTrabajador(trabajadorId, tx);
+    await completarEnTx(tx, s);
   });
   return detalle(solicitudId, { id: usuarioId, rol: 'cliente' });
 }
@@ -319,6 +374,9 @@ module.exports = {
   completar,
   cancelar,
   cargar,
+  completarVencidas,
+  verificarClienteActivo,
+  HORAS_PARA_DISPUTAR,
   perfilTrabajadorDe,
   relacionCon,
   serializar,

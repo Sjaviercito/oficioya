@@ -64,17 +64,24 @@ describe('RF-10 — Regla del ranking (sección 3.4)', () => {
 });
 
 describe('v1.1-6 — Ajustes en el ranking', () => {
-  test('CA-10.6 con 1 de 4 trabajos con ajuste, la puntuación baja 2.5 %', () => {
+  test('CA-10.6 (v1.2) con 1 de 4 trabajos con ajuste RECHAZADO, la puntuación baja 2.5 %', () => {
     const datos = {
       resenas: [{ estrellas: 4, creadaEn: hace(1) }, { estrellas: 4, creadaEn: hace(2) }, { estrellas: 4, creadaEn: hace(3) }, { estrellas: 4, creadaEn: hace(4) }],
-      solicitudesAceptadas: 4, cancelacionesAtribuibles: 0, trabajosCompletados: 4, trabajosConAjuste: 1,
+      solicitudesAceptadas: 4, cancelacionesAtribuibles: 0, trabajosCompletados: 4, trabajosConAjusteRechazado: 1,
     };
     expect(calcularRanking(datos, AHORA).puntuacionRanking).toBeCloseTo(4 * (1 - 0.1 * 0.25), 10);
+  });
+  test('CA-10.8 (v1.2) los ajustes ACEPTADOS no penalizan', () => {
+    const r = calcularRanking({
+      resenas: [{ estrellas: 4, creadaEn: hace(1) }, { estrellas: 4, creadaEn: hace(2) }, { estrellas: 4, creadaEn: hace(3) }],
+      solicitudesAceptadas: 3, cancelacionesAtribuibles: 0, trabajosCompletados: 3, trabajosConAjuste: 3, trabajosConAjusteRechazado: 0,
+    }, AHORA);
+    expect(r.puntuacionRanking).toBeCloseTo(4, 10);
   });
   test('CA-10.7 sin ajustes la puntuación es la misma de la v1.0 (CA-10.1 sigue en 3.49)', () => {
     const r = calcularRanking({
       resenas: [{ estrellas: 5, creadaEn: hace(10) }, { estrellas: 4, creadaEn: hace(120) }, { estrellas: 3, creadaEn: hace(400) }],
-      solicitudesAceptadas: 5, cancelacionesAtribuibles: 1, trabajosCompletados: 3, trabajosConAjuste: 0,
+      solicitudesAceptadas: 5, cancelacionesAtribuibles: 1, trabajosCompletados: 3, trabajosConAjusteRechazado: 0,
     }, AHORA);
     expect(redondear2(r.puntuacionRanking)).toBe(3.49);
   });

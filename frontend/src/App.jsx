@@ -14,6 +14,10 @@ import MiPerfil from './pages/MiPerfil';
 import Verificaciones from './pages/Verificaciones';
 import Avisos from './pages/Avisos';
 import Trabajador from './pages/Trabajador';
+import Privacidad from './pages/Privacidad';
+import Terminos from './pages/Terminos';
+import AceptarPrivacidad from './pages/AceptarPrivacidad';
+import Cuenta from './pages/Cuenta';
 
 const INICIO = { cliente: '/solicitudes', trabajador: '/trabajos', admin: '/verificaciones' };
 
@@ -32,6 +36,9 @@ export default function App() {
         <Route index element={<Inicio />} />
         <Route path="entrar" element={<Entrar />} />
         <Route path="registro" element={<Registro />} />
+        <Route path="privacidad" element={<Privacidad />} />
+        <Route path="terminos" element={<Terminos />} />
+        <Route path="aceptar-privacidad" element={<AceptarPrivacidad />} />
 
         <Route element={<Requiere roles={['cliente']} />}>
           <Route path="solicitudes" element={<MisSolicitudes />} />
@@ -52,6 +59,10 @@ export default function App() {
 
         <Route element={<Requiere roles={['admin']} />}>
           <Route path="verificaciones" element={<Verificaciones />} />
+        </Route>
+
+        <Route element={<Requiere roles={['cliente', 'trabajador', 'admin']} />}>
+          <Route path="cuenta" element={<Cuenta />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

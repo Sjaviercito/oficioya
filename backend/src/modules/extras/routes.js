@@ -42,20 +42,31 @@ router.post('/requests/:id/review/response', requiereRol('trabajador'), async (r
   res.status(201).json({ solicitud: await solicitudes.detalle(id, req.usuario) });
 });
 
-// RF-13: el cliente reporta al trabajador de una de sus solicitudes aceptadas.
+// RF-13 (v1.2: en ambos sentidos): el cliente reporta al trabajador aceptado, o el trabajador
+// aceptado reporta al cliente. Un reporte por solicitud y por sentido.
 const reporte = z.object({
   motivo: z.string({ message: 'Describe el problema' }).trim().min(10, { message: 'Describe el problema (mínimo 10 caracteres)' }).max(500),
 });
-router.post('/requests/:id/report', requiereRol('cliente'), async (req, res) => {
+router.post('/requests/:id/report', requiereRol('cliente', 'trabajador'), async (req, res) => {
   const id = uuid.parse(req.params.id);
   const { motivo } = reporte.parse(req.body);
   const s = await prisma.solicitud.findUnique({ where: { id }, include: { cotizacionAceptada: true } });
   if (!s) throw errores.notFound('Solicitud no encontrada');
-  if (s.clienteId !== req.usuario.id) throw errores.forbidden('Solo puedes reportar trabajadores que contrataste');
-  if (!s.cotizacionAceptada) throw errores.conflict('Solo se reporta a un trabajador cuya cotización aceptaste');
-  const ya = await prisma.reporte.findUnique({ where: { solicitudId_clienteId: { solicitudId: id, clienteId: req.usuario.id } } });
+  if (!s.cotizacionAceptada) throw errores.conflict('Solo se reporta cuando hay una cotización aceptada');
+  let rolReportado;
+  if (req.usuario.rol === 'cliente') {
+    if (s.clienteId !== req.usuario.id) throw errores.forbidden('Solo puedes reportar trabajadores que contrataste');
+    rolReportado = 'trabajador';
+  } else {
+    const perfil = await solicitudes.perfilTrabajadorDe(req.usuario.id);
+    if (!perfil || perfil.id !== s.cotizacionAceptada.trabajadorId) throw errores.forbidden('Solo puedes reportar clientes de tus trabajos aceptados');
+    rolReportado = 'cliente';
+  }
+  const ya = await prisma.reporte.findUnique({ where: { solicitudId_rolReportado: { solicitudId: id, rolReportado } } });
   if (ya) throw errores.conflict('Ya reportaste esta solicitud');
-  await prisma.reporte.create({ data: { solicitudId: id, clienteId: req.usuario.id, trabajadorId: s.cotizacionAceptada.trabajadorId, motivo } });
+  await prisma.reporte.create({
+    data: { solicitudId: id, clienteId: s.clienteId, trabajadorId: s.cotizacionAceptada.trabajadorId, motivo, rolReportado },
+  });
   res.status(201).json({ ok: true });
 });
 
@@ -65,8 +76,15 @@ router.get('/admin/reports', requiereRol('admin'), async (req, res) => {
     where: { id: { in: [...new Set(lista.map((r) => r.trabajadorId))] } },
     include: { usuario: { select: { nombre: true } } },
   });
-  const porId = Object.fromEntries(perfiles.map((p) => [p.id, p]));
-  res.json(lista.map((r) => ({ ...r, trabajador: { nombre: porId[r.trabajadorId]?.usuario.nombre, suspendido: porId[r.trabajadorId]?.suspendido } })));
+  const clientes = await prisma.usuario.findMany({ where: { id: { in: [...new Set(lista.map((r) => r.clienteId))] } } });
+  const pid = Object.fromEntries(perfiles.map((p) => [p.id, p]));
+  const cid = Object.fromEntries(clientes.map((c) => [c.id, c]));
+  res.json(lista.map((r) => {
+    const reportado = r.rolReportado === 'trabajador'
+      ? { rol: 'trabajador', nombre: pid[r.trabajadorId]?.usuario.nombre, suspendido: pid[r.trabajadorId]?.suspendido }
+      : { rol: 'cliente', nombre: cid[r.clienteId]?.nombre, suspendido: cid[r.clienteId]?.suspendido };
+    return { ...r, reportado, trabajador: { nombre: reportado.nombre, suspendido: reportado.suspendido } };
+  }));
 });
 
 const accion = z.object({ accion: z.enum(['suspender', 'descartar'], { message: 'La acción debe ser suspender o descartar' }) });
@@ -78,7 +96,11 @@ router.patch('/admin/reports/:reporteId', requiereRol('admin'), async (req, res)
   if (r.atendido) throw errores.conflict('Este reporte ya fue atendido');
   await prisma.$transaction([
     prisma.reporte.update({ where: { id: reporteId }, data: { atendido: true } }),
-    ...(a === 'suspender' ? [prisma.perfilTrabajador.update({ where: { id: r.trabajadorId }, data: { suspendido: true } })] : []),
+    ...(a === 'suspender'
+      ? [r.rolReportado === 'trabajador'
+        ? prisma.perfilTrabajador.update({ where: { id: r.trabajadorId }, data: { suspendido: true } })
+        : prisma.usuario.update({ where: { id: r.clienteId }, data: { suspendido: true } })]
+      : []),
   ]);
   res.json({ ok: true, accion: a });
 });
@@ -141,8 +163,25 @@ router.patch('/admin/oficios/:oficioId', requiereRol('admin'), async (req, res) 
 
 // v1.1-7: lista de trabajadores suspendidos para poder reactivarlos.
 router.get('/admin/workers/suspended', requiereRol('admin'), async (req, res) => {
-  const lista = await prisma.perfilTrabajador.findMany({ where: { suspendido: true }, include: { usuario: { select: { nombre: true, email: true } } } });
+  const lista = await prisma.perfilTrabajador.findMany({
+    where: { suspendido: true, usuario: { eliminadoEn: null } },
+    include: { usuario: { select: { nombre: true, email: true } } },
+  });
   res.json(lista.map((p) => ({ trabajadorId: p.id, nombre: p.usuario.nombre, email: p.usuario.email })));
+});
+
+// v1.2: clientes suspendidos y su reactivación.
+router.get('/admin/users/suspended', requiereRol('admin'), async (req, res) => {
+  const lista = await prisma.usuario.findMany({ where: { suspendido: true, rol: 'cliente', eliminadoEn: null } });
+  res.json(lista.map((u) => ({ usuarioId: u.id, nombre: u.nombre, email: u.email })));
+});
+router.patch('/admin/users/:usuarioId/reinstate', requiereRol('admin'), async (req, res) => {
+  const usuarioId = uuid.parse(req.params.usuarioId);
+  levantar.parse(req.body);
+  const { count } = await prisma.usuario.updateMany({ where: { id: usuarioId, suspendido: true }, data: { suspendido: false } });
+  if (count === 0) throw errores.conflict('Este cliente no está suspendido');
+  await require('../../shared/avisos').avisar(null, usuarioId, 'Tu cuenta fue reactivada por el equipo de OficioYa.');
+  res.json({ ok: true });
 });
 
 module.exports = router;

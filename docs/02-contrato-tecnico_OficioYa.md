@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Equipo / Autor(es) | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
-| Versión | 1.1 |
+| Versión | 1.2 |
 | Fecha | 2026-11-25 |
 | Documento de origen | [01-vision-alcance_OficioYa_Santiago.md](./01-vision-alcance_OficioYa_Santiago.md) |
 | Estado | Vigente (entrega final) |
@@ -42,6 +42,16 @@ OficioYa es una aplicación web responsiva, pensada para el celular, que conecta
 | RF-17 | Porcentaje de trabajos con ajuste en el perfil del trabajador | Should | Sí (v1.0) |
 | RF-18 | Perfil público del trabajador con reseñas y respuestas | Should | Sí (v1.1) |
 | RF-19 | Tope de ajuste configurable por oficio (administrador) | Could | Sí (v1.1) |
+| RF-20 | Celular de contacto en el registro y en "Mi cuenta" | Must | Sí (v1.2) |
+| RF-21 | Preguntas antes de cotizar | Should | No (pendiente P2) |
+| RF-22 | Horario de visita propuesto por el trabajador y confirmado por el cliente | Should | Sí (v1.2) |
+| RF-23 | Contacto directo por WhatsApp o llamada durante el trabajo activo | Must | Sí (v1.2) |
+| RF-24 | Confirmación del monto pagado por ambas partes | Should | No (pendiente P2) |
+| RF-25 | Volver a contratar al mismo trabajador | Could | No (pendiente P3) |
+| RF-26 | "Terminado" marcado por el trabajador con 72 h para disputa | Must | Sí (v1.2) |
+| RF-27 | Cambiar contraseña | Must | Sí (v1.2) |
+| RF-28 | Eliminar cuenta (derecho de cancelación) | Must | Sí (v1.2) |
+| RF-29 | Aviso de privacidad y términos aceptados al registrarse | Must | Sí (v1.2) |
 
 > Prioridad: **Must** (sin esto el MVP no sirve), **Should** (importante, pero hay alternativa), **Could** (deseable).
 
@@ -278,6 +288,22 @@ Cualquier transición que no aparezca en esta tabla responde `409` y no modifica
 - **Momentos de recálculo:** al registrar una reseña, al completar una solicitud, al registrar una cancelación atribuible y en el proceso diario de las 03:00 (ADR-06).
 
 ---
+
+### 3.7 Cambios de la v1.2 (análisis causa–consecuencia, `docs/05-analisis-causa-consecuencia_OficioYa.md`)
+
+- **Ranking (cambia la v1.1):** el factor de −10 % usa la proporción de trabajos con un ajuste **rechazado** por el cliente. Los ajustes aceptados ya no penalizan: penalizarlos incentivaba cotizar más alto o cobrar el extra fuera de la plataforma (hallazgo R1).
+- **Privacidad (RF-29):** el registro exige `aceptaPrivacidad: true` (400 si falta) y guarda fecha y versión aceptada. Si la versión cambia, la interfaz pide aceptarla de nuevo (`POST /auth/me/privacy`).
+- **Celular (RF-20):** obligatorio al registrarse; 10 dígitos de México con lada de 2 a 9; se normaliza quitando espacios, guiones y `+52`. `PUT /auth/me/phone`. **No se verifica con código** (requiere proveedor de SMS, que está fuera de alcance).
+- **Contacto (RF-23, amplía RNF-04):** `GET /requests/:id` incluye `contacto { nombre, telefono }` solo para el cliente dueño y el trabajador aceptado, y solo en `aceptada` o `en_curso`. Nunca aparece en búsquedas, cotizaciones ni perfil público. La interfaz ofrece WhatsApp (`wa.me`) y llamada, con el aviso de que OficioYa nunca pide códigos ni pagos.
+- **Horario de visita (RF-22):** `POST /requests/:id/visit { fechaHora }` (trabajador aceptado, fecha futura, trabajo activo) y `PATCH /requests/:id/visit { decision }` (cliente dueño).
+- **Terminado por el trabajador (RF-26):** `POST /requests/:id/finish` (solo `en_curso`, sin ajuste pendiente, una vez). El cliente confirma (`/complete`) o disputa con motivo (`POST /requests/:id/dispute`). Si no responde en **72 h**, el trabajo se completa automáticamente (revisión al consultar y en el ping de `/health`). Después de marcar terminado no se pueden proponer ajustes.
+- **Reportes en ambos sentidos (RF-13):** el trabajador aceptado puede reportar al cliente; un reporte por solicitud y por sentido. Un **cliente suspendido** no publica solicitudes ni acepta cotizaciones (403). `GET /admin/users/suspended` y `PATCH /admin/users/:id/reinstate`.
+- **Cuenta (RF-27, RF-28):** `PUT /auth/me/password` (cierra las demás sesiones) y `DELETE /auth/me { password }`: 409 si hay trabajos activos; borra INE, selfie, fotos, celular, direcciones y notificaciones; anonimiza nombre y correo; conserva estrellas de reseñas para no alterar la reputación de terceros.
+- **Demostración (D1/D2):** el seed solo crea cuentas si `SEED_DEMO=true`; los celulares de demostración empiezan con 0 para que ningún botón de WhatsApp escriba a una persona real.
+- **Operación (I1, R6):** un workflow de GitHub Actions hace ping a `/health` cada 10 minutos de 6:00 a 24:00 (Puebla); el ping dispara el cierre automático y el recálculo diario.
+- **Se respeta lo que quedó fuera de alcance:** no hay chat dentro de la app, pagos ni notificaciones push. El chat queda en la hoja de ruta del lanzamiento real.
+
+**Criterios nuevos:** CA-01.6 (registro sin aviso → 400; celular inválido → 400; `+52 (222) 123-4567` se normaliza), CA-23.1 (contacto solo para las partes y solo con el trabajo activo; nunca en búsqueda ni perfil público), CA-22.1 (visita pasada → 400; el cliente ajeno → 403; el cliente dueño confirma), CA-26.1 (terminar en `aceptada` → 409; segunda vez → 409; disputa limpia la marca; a las 73 h se completa sola y el contacto desaparece), CA-10.8 (ajustes aceptados no penalizan), CA-10.9 (un ajuste rechazado suma al contador del ranking), CA-13.3 (reporte del trabajador → suspensión del cliente → 403 al publicar → reactivación), CA-27.1 (contraseña actual incorrecta → 401), CA-28.1 (trabajo activo → 409; contraseña incorrecta → 401; después no puede entrar y sus datos están borrados).
 
 ### 3.6 Cambios de la v1.1
 
@@ -779,6 +805,7 @@ REGLAS
 |---|---|---|---|
 | 0.1 | 2026-09-22 | Versión inicial | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
 | 0.3 | 2026-11-04 | Ajustes de la construcción del MVP: despliegue frontend en subdominio + API en Render, Node 22, Prisma sin motor binario, tabla `refresh_token`, endpoints de apoyo a la interfaz (ver trazabilidad de la Etapa 3) | Equipo 6 |
+| 1.2 | 2026-11-26 | Análisis causa–consecuencia: ranking solo penaliza ajustes rechazados, aviso de privacidad, celular y contacto por WhatsApp, horario de visita, terminado por el trabajador con 72 h, reportes en ambos sentidos, cambiar contraseña, eliminar cuenta, demo controlada y ping de disponibilidad | Equipo 6 |
 | 1.1 | 2026-11-26 | Mejoras: archivos persistentes en la base (ADR-05 revisado), perfil público (RF-18), tope por oficio (RF-19), ajustes con peso de 10 % en el ranking, avisos por zona, reactivación, límite de intentos de login y CSP | Equipo 6 |
 | 1.0 | 2026-11-25 | Cambio solicitado por el usuario: ajuste de precio con aprobación del cliente (RF-16, RF-17, sección 3.5, CA-16.x y CA-17.x); RF-14 entra al alcance; RF-11, RF-12 y RF-13 quedan como pendientes conocidos | Equipo 6 |
 | 0.2 | 2026-10-06 | ADR reescritos (incluye API-first para la Etapa 6) y stack definido; modelo de datos completo; endpoints de cancelación, identificación y transiciones; máquina de estados; criterios con datos concretos; RNF alineados con la Etapa 1 | Javier Alejandro Santiago Salinas |

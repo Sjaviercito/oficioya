@@ -79,6 +79,8 @@ export default function DetalleSolicitud() {
         <div className="fotos">{s.fotos.map((f) => <img key={f} src={urlArchivo(f)} alt="Foto del trabajo" loading="lazy" />)}</div>
       )}
 
+      <Coordinacion s={s} rel={rel} esCliente={esCliente} ocupado={ocupado} accion={accion} id={id} />
+
       {s.cancelacion && (
         <Aviso tipo="info">
           Cancelada por {s.cancelacion.rolQueCancela === 'cliente' ? 'el cliente' : 'el trabajador'}: {s.cancelacion.motivo}
@@ -122,7 +124,7 @@ export default function DetalleSolicitud() {
         onDecidir={(ajusteId, decision) => accion(() => api.patch(`/requests/${id}/adjustments/${ajusteId}`, { decision }),
           decision === 'aceptar' ? 'Aceptaste el ajuste. El monto quedó actualizado.' : 'Rechazaste el ajuste. El trabajo sigue al precio original.')} />
 
-      {esCliente && s.estado === 'en_curso' && (
+      {esCliente && s.estado === 'en_curso' && !s.terminadaPorTrabajadorEn && (
         <div className="acciones">
           <button className="boton accion ancho" disabled={ocupado}
             onClick={() => accion(() => api.post(`/requests/${id}/complete`), 'Listo, el trabajo quedó como terminado.')}>
@@ -148,9 +150,9 @@ export default function DetalleSolicitud() {
           )}
         </section>
       )}
-      {esCliente && s.trabajadorAceptado && (
+      {(esCliente || rel === 'trabajadorAceptado') && s.trabajadorAceptado && (
         <details style={{ marginTop: '1.5rem' }}>
-          <summary className="suave">Reportar al trabajador</summary>
+          <summary className="suave">{esCliente ? 'Reportar al trabajador' : 'Reportar al cliente'}</summary>
           <form onSubmit={(e) => { e.preventDefault(); const motivo = new FormData(e.currentTarget).get('motivo').trim(); accion(() => api.post(`/requests/${id}/report`, { motivo }), 'Reporte enviado. El equipo de OficioYa lo revisará.'); }}>
             <Campo etiqueta="¿Qué pasó?" ayuda="Mínimo 10 caracteres."><textarea name="motivo" required minLength={10} maxLength={500} /></Campo>
             <button className="boton peligro" disabled={ocupado}>Enviar reporte</button>
@@ -320,5 +322,94 @@ function Ajustes({ s, rel, ocupado, onProponer, onDecidir }) {
         </form>
       )}
     </section>
+  );
+}
+
+const fechaHora = (iso) => new Intl.DateTimeFormat('es-MX', { dateStyle: 'full', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(iso));
+
+// v1.2: contacto directo, horario de visita y "terminado" del trabajador (sin chat en la app).
+function Coordinacion({ s, rel, esCliente, ocupado, accion, id }) {
+  const esTrabajador = rel === 'trabajadorAceptado';
+  if (!esCliente && !esTrabajador) return null;
+  const activo = ['aceptada', 'en_curso'].includes(s.estado);
+  const c = s.contacto;
+  const mensaje = encodeURIComponent(`Hola, soy ${esCliente ? 'el cliente' : 'el trabajador'} de OficioYa: ${s.oficio.nombre} en ${s.colonia}.`);
+
+  return (
+    <>
+      {activo && c && (
+        <section>
+          <h2>Contacto</h2>
+          {c.telefono ? (
+            <>
+              <div className="acciones" style={{ marginTop: 0 }}>
+                <a className="boton accion" href={`https://wa.me/52${c.telefono}?text=${mensaje}`} target="_blank" rel="noopener noreferrer">WhatsApp con {c.nombre}</a>
+                <a className="boton secundario" href={`tel:${c.telefono}`}>Llamar</a>
+              </div>
+              <p className="suave pequeno" style={{ marginTop: '0.75rem' }}>Usa WhatsApp para coordinarte. Los cambios de precio regístralos con un ajuste aquí, para que quede constancia. OficioYa nunca te pedirá por WhatsApp códigos, contraseñas ni pagos.</p>
+            </>
+          ) : (
+            <p className="suave">{c.nombre} todavía no registró su celular.</p>
+          )}
+        </section>
+      )}
+
+      {activo && (
+        <section>
+          <h2>Visita</h2>
+          {s.visita ? (
+            <p>{s.visita.confirmada ? 'Confirmada: ' : 'Propuesta: '}<strong>{fechaHora(s.visita.fechaHora)}</strong></p>
+          ) : (
+            <p className="suave">{esTrabajador ? 'Propón cuándo irás.' : 'El trabajador todavía no propone un horario.'}</p>
+          )}
+          {esCliente && s.visita && !s.visita.confirmada && (
+            <div className="acciones">
+              <button className="boton accion" disabled={ocupado} onClick={() => accion(() => api.patch(`/requests/${id}/visit`, { decision: 'aceptar' }), 'Horario confirmado.')}>Confirmar horario</button>
+              <button className="boton secundario" disabled={ocupado} onClick={() => accion(() => api.patch(`/requests/${id}/visit`, { decision: 'rechazar' }), 'Le pediste otro horario al trabajador.')}>Pedir otro horario</button>
+            </div>
+          )}
+          {esTrabajador && (
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const valor = new FormData(e.currentTarget).get('fechaHora');
+              accion(() => api.post(`/requests/${id}/visit`, { fechaHora: new Date(valor).toISOString() }), 'Horario enviado al cliente.');
+            }}>
+              <Campo etiqueta={s.visita ? 'Proponer otro horario' : 'Fecha y hora de la visita'}>
+                <input name="fechaHora" type="datetime-local" required />
+              </Campo>
+              <button className="boton secundario" disabled={ocupado}>Proponer horario</button>
+            </form>
+          )}
+        </section>
+      )}
+
+      {s.estado === 'en_curso' && s.disputaMotivo && !s.terminadaPorTrabajadorEn && (
+        <Aviso tipo="info">El cliente indicó que falta: {s.disputaMotivo}</Aviso>
+      )}
+      {esTrabajador && s.estado === 'en_curso' && !s.terminadaPorTrabajadorEn && (
+        <div className="acciones">
+          <button className="boton ancho" disabled={ocupado} onClick={() => accion(() => api.post(`/requests/${id}/finish`), 'Avisamos al cliente. Tiene 72 horas para confirmar o indicar qué falta.')}>Marcar como terminado</button>
+        </div>
+      )}
+      {esTrabajador && s.estado === 'en_curso' && s.terminadaPorTrabajadorEn && (
+        <Aviso tipo="info">Marcaste el trabajo como terminado. Si el cliente no responde en {s.horasParaDisputar} h, se cerrará solo.</Aviso>
+      )}
+      {esCliente && s.estado === 'en_curso' && s.terminadaPorTrabajadorEn && (
+        <section>
+          <Aviso tipo="info">El trabajador marcó el trabajo como terminado. Tienes {s.horasParaDisputar} h para confirmarlo o indicar qué falta; si no respondes, se dará por terminado.</Aviso>
+          <div className="acciones">
+            <button className="boton accion" disabled={ocupado} onClick={() => accion(() => api.post(`/requests/${id}/complete`), 'Listo, el trabajo quedó como terminado.')}>Confirmar que terminó</button>
+          </div>
+          <form style={{ marginTop: '1rem' }} onSubmit={(e) => {
+            e.preventDefault();
+            const motivo = new FormData(e.currentTarget).get('motivo').trim();
+            accion(() => api.post(`/requests/${id}/dispute`, { motivo }), 'Le avisamos al trabajador qué falta.');
+          }}>
+            <Campo etiqueta="¿Falta algo?" ayuda="Mínimo 10 caracteres."><textarea name="motivo" required minLength={10} maxLength={300} /></Campo>
+            <button className="boton secundario" disabled={ocupado}>No está terminado</button>
+          </form>
+        </section>
+      )}
+    </>
   );
 }

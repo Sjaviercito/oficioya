@@ -34,7 +34,8 @@ export function SesionProvider({ children }) {
     return r.usuario;
   }, []);
 
-  const valor = useMemo(() => ({ usuario, cargando, entrar, salir }), [usuario, cargando, entrar, salir]);
+  const actualizarUsuario = useCallback((u) => setUsuario(u), []);
+  const valor = useMemo(() => ({ usuario, cargando, entrar, salir, actualizarUsuario }), [usuario, cargando, entrar, salir, actualizarUsuario]);
   return <SesionContext.Provider value={valor}>{children}</SesionContext.Provider>;
 }
 

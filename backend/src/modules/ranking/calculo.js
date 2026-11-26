@@ -3,7 +3,8 @@
 const { diasCompletosEntre } = require('../../shared/fechas');
 
 const MIN_TRABAJOS_PARA_RANKING = 3;
-// v1.1: hasta -10 % de la puntuación si TODOS los trabajos terminaron con ajuste de precio.
+// v1.2: hasta -10 % de la puntuación según la proporción de trabajos con un ajuste RECHAZADO por el cliente.
+// Un ajuste aceptado es transparencia y no penaliza (penalizarlo empujaría el cobro extra fuera de la plataforma).
 const PESO_AJUSTE = 0.1;
 
 // Peso por antigüedad: <90 días → 1.0; 90 a 365 → 0.6; >365 → 0.3.
@@ -14,7 +15,7 @@ function pesoPorAntiguedad(dias) {
 }
 
 // resenas: [{ estrellas, creadaEn }]
-function calcularRanking({ resenas, solicitudesAceptadas, cancelacionesAtribuibles, trabajosCompletados, trabajosConAjuste = 0 }, ahora = new Date()) {
+function calcularRanking({ resenas, solicitudesAceptadas, cancelacionesAtribuibles, trabajosCompletados, trabajosConAjusteRechazado = 0 }, ahora = new Date()) {
   const tasaCancelacion = solicitudesAceptadas > 0 ? cancelacionesAtribuibles / solicitudesAceptadas : 0;
 
   let sumaPonderada = 0;
@@ -31,7 +32,7 @@ function calcularRanking({ resenas, solicitudesAceptadas, cancelacionesAtribuibl
   }
 
   const calificacionPonderada = sumaPonderada / sumaPesos;
-  const proporcionAjuste = trabajosCompletados > 0 ? trabajosConAjuste / trabajosCompletados : 0;
+  const proporcionAjuste = trabajosCompletados > 0 ? Math.min(1, trabajosConAjusteRechazado / trabajosCompletados) : 0;
   return {
     calificacionPonderada,
     tasaCancelacion,

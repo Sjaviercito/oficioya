@@ -5,6 +5,7 @@ import { useSesion } from '../api/sesion';
 export default function Requiere({ roles }) {
   const { usuario } = useSesion();
   if (!usuario) return <Navigate to="/entrar" replace />;
+  if (!usuario.privacidadAceptada) return <Navigate to="/aceptar-privacidad" replace />;
   if (!roles.includes(usuario.rol)) return <Navigate to="/" replace />;
   return <Outlet />;
 }

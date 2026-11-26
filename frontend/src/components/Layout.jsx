@@ -7,13 +7,15 @@ const MENU = {
     ['/solicitudes/nueva', 'Pedir un trabajo'],
     ['/buscar', 'Buscar trabajadores'],
     ['/avisos', 'Avisos'],
+    ['/cuenta', 'Mi cuenta'],
   ],
   trabajador: [
     ['/trabajos', 'Trabajos'],
     ['/perfil', 'Mi perfil'],
     ['/avisos', 'Avisos'],
+    ['/cuenta', 'Mi cuenta'],
   ],
-  admin: [['/verificaciones', 'Verificaciones']],
+  admin: [['/verificaciones', 'Verificaciones'], ['/cuenta', 'Mi cuenta']],
 };
 
 export default function Layout() {
@@ -38,6 +40,9 @@ export default function Layout() {
         )}
       </header>
       <main>
+        {usuario && usuario.rol !== 'admin' && !usuario.telefono && (
+          <div className="aviso info" role="status">Agrega tu celular en <Link to="/cuenta">Mi cuenta</Link> para poder coordinar tus trabajos.</div>
+        )}
         <Outlet />
       </main>
     </>
