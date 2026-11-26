@@ -4,11 +4,13 @@ import { useCatalogo } from '../api/catalogo';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
 import TarjetaTrabajador from '../components/TarjetaTrabajador';
+import useTitulo from '../hooks/useTitulo';
 
 export default function Buscar() {
   const { oficios, zonas } = useCatalogo();
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
+  useTitulo('Buscar trabajadores');
 
   async function buscar(e) {
     e.preventDefault();

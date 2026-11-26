@@ -1,6 +1,14 @@
 # Servidor Apache del hosting: cualquier ruta de la app (por ejemplo /solicitudes/123)
 # se resuelve con index.html para que React Router la maneje al recargar la página.
 Options -Indexes
+# v1.4: la fuente se sirve desde este mismo servidor (sin Google Fonts).
+AddType font/woff2 .woff2
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType text/javascript "access plus 1 year"
+  ExpiresByType text/css "access plus 1 year"
+</IfModule>
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -12,7 +20,7 @@ Options -Indexes
 # v1.1-4: política de seguridad de contenido. Solo se ejecuta código propio y solo se habla con la
 # API de OficioYa: limita lo que un script inyectado (XSS) podría hacer con la sesión.
 <IfModule mod_headers.c>
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self' https://oficioya-api.onrender.com; img-src 'self' data: blob: https://oficioya-api.onrender.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self' https://oficioya-api.onrender.com; img-src 'self' data: blob: https://oficioya-api.onrender.com; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>

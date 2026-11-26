@@ -132,6 +132,7 @@ async function buscar({ oficioId, zonaId }) {
       esNuevo: puntuacionRanking === null,
       sobreCotizadoPromedio: rep[resto.id]?.sobreCotizadoPromedio ?? null,
       insignias: rep[resto.id]?.insignias ?? [],
+      cancelacionesPorDesacuerdo: rep[resto.id]?.cancelacionesPorDesacuerdo ?? 0,
     }));
 }
 

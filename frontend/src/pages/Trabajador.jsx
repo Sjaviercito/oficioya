@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, urlArchivo } from '../api/client';
 import Aviso from '../components/Aviso';
+import { Icono } from '../components/Iconos';
+import useTitulo from '../hooks/useTitulo';
 import { Insignias } from '../components/Precios';
 
 // v1.1-3: perfil público del trabajador.
@@ -10,19 +12,20 @@ export default function Trabajador() {
   const navegar = useNavigate();
   const [t, setT] = useState(null);
   const [error, setError] = useState('');
+  useTitulo(t ? t.nombre : 'Trabajador');
   useEffect(() => { api.get(`/workers/${id}/public`).then(setT).catch((e) => setError(e.message)); }, [id]);
 
   if (!t) return <Aviso tipo={error ? 'error' : 'info'}>{error || 'Cargando…'}</Aviso>;
   return (
     <>
-      <p className="pequeno"><button type="button" className="enlace" onClick={() => navegar(-1)}>← Volver</button></p>
+      <button type="button" className="volver" onClick={() => navegar(-1)}><Icono.flecha />Volver</button>
       <div className="trabajador" style={{ gridTemplateColumns: '72px 1fr auto' }}>
         <div className="avatar" style={{ width: 72, height: 72 }} aria-hidden="true">
           {t.fotoUrl ? <img src={urlArchivo(t.fotoUrl)} alt="" /> : t.nombre.charAt(0).toUpperCase()}
         </div>
         <div>
           <h1 style={{ margin: 0 }}>{t.nombre}</h1>
-          <span className="sello">✓ Identidad verificada</span>
+          <span className="sello"><Icono.check />Identidad verificada</span>
           <Insignias t={t} />
         </div>
         <div className="puntuacion">
@@ -35,6 +38,7 @@ export default function Trabajador() {
         <div className="dato"><dt>Experiencia</dt><dd>{t.experienciaAnios} años</dd></div>
         <div className="dato"><dt>Trabajos</dt><dd>{t.trabajosCompletados} completados</dd></div>
         <div className="dato"><dt>Cancelaciones</dt><dd>{Math.round(t.tasaCancelacion * 100)} % de los trabajos aceptados</dd></div>
+        {t.cancelacionesPorDesacuerdo > 0 && <div className="dato"><dt>Cancelados por precio</dt><dd>{t.cancelacionesPorDesacuerdo} {t.cancelacionesPorDesacuerdo === 1 ? 'vez dejó' : 'veces dejó'} un trabajo porque el cliente no aceptó un aumento con foto</dd></div>}
         <div className="dato"><dt>Ajustes de precio</dt><dd>{t.porcentajeConAjuste === null ? '—' : `${t.porcentajeConAjuste} % de sus trabajos`}</dd></div>
       </dl>
       <h2>Reseñas</h2>

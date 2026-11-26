@@ -790,6 +790,52 @@ describeDb('Flujo completo de OficioYa (integración)', () => {
       await request(app).patch(`/api/v1/requests/${id}/questions/${pid}`).set(auth('cli13')).send({ respuesta: 'Otra' }).expect(409);
     });
 
+    test('CA-06.8 el trabajador actualiza su cotización vencida y la vigencia vuelve a contar', async () => {
+      const id = await solicitudLaPaz();
+      await request(app).put(`/api/v1/requests/${id}/quotes/mine`).set(auth('tra13')).send({ tipo: 'cerrado', manoObra: 500, material: 0, tiempoEstimadoHoras: 2 }).expect(404);
+      const c = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('tra13')).send({ tipo: 'cerrado', manoObra: 500, material: 0, tiempoEstimadoHoras: 2, vigenciaDias: 1 });
+      await prisma.cotizacion.update({ where: { id: c.body.cotizacion.id }, data: { creadaEn: new Date(Date.now() - 2 * 86400000) } });
+      const u = await request(app).put(`/api/v1/requests/${id}/quotes/mine`).set(auth('tra13')).send({ tipo: 'diagnostico', costoVisita: 250, vigenciaDias: 3 });
+      expect(u.status).toBe(200);
+      expect(u.body.cotizacion).toMatchObject({ id: c.body.cotizacion.id, tipo: 'diagnostico', monto: 250, vencida: false });
+      await request(app).post(`/api/v1/requests/${id}/accept`).set(auth('cli13')).send({ cotizacionId: c.body.cotizacion.id }).expect(200);
+      await request(app).put(`/api/v1/requests/${id}/quotes/mine`).set(auth('tra13')).send({ tipo: 'diagnostico', costoVisita: 300 }).expect(409);
+    });
+
+    test('CA-30.8 presupuesto rechazado → el trabajador cierra solo con la visita → el cliente confirma', async () => {
+      const id = await solicitudLaPaz();
+      const c = await request(app).post(`/api/v1/requests/${id}/quotes`).set(auth('tra13')).send({ tipo: 'diagnostico', costoVisita: 200 });
+      await request(app).post(`/api/v1/requests/${id}/accept`).set(auth('cli13')).send({ cotizacionId: c.body.cotizacion.id }).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/close-visit`).set(auth('tra13')).expect(409);
+      const p = await request(app).post(`/api/v1/requests/${id}/adjustments`).set(auth('tra13')).send({ tipo: 'presupuesto', deltaManoObra: 900 });
+      await request(app).patch(`/api/v1/requests/${id}/adjustments/${p.body.solicitud.ajustes[0].id}`).set(auth('cli13')).send({ decision: 'rechazar' }).expect(200);
+      await request(app).post(`/api/v1/requests/${id}/close-visit`).set(auth('cli13')).expect(403);
+      const r = await request(app).post(`/api/v1/requests/${id}/close-visit`).set(auth('tra13'));
+      expect(r.status).toBe(200);
+      expect(r.body.solicitud).toMatchObject({ estado: 'en_curso', montoFinal: 200 });
+      expect(r.body.solicitud.terminadaPorTrabajadorEn).toBeTruthy();
+      await request(app).post(`/api/v1/requests/${id}/close-visit`).set(auth('tra13')).expect(409);
+      await request(app).post(`/api/v1/requests/${id}/complete`).set(auth('cli13')).expect(200);
+    });
+
+    test('CA-32.2 las cancelaciones por desacuerdo de precio se cuentan en el perfil', async () => {
+      const p = await request(app).get('/api/v1/workers/me/profile').set(auth('tra13'));
+      expect(p.body.perfil.cancelacionesPorDesacuerdo).toBe(1);
+      const pub = await request(app).get(`/api/v1/workers/${S.tra13.perfilId}/public`).set(auth('cli13'));
+      expect(pub.body.cancelacionesPorDesacuerdo).toBe(1);
+    });
+
+    test('CA-11.3 contador de avisos sin leer para el menú; CA-UX.1 el error de validación dice qué campo falló', async () => {
+      const c = await request(app).get('/api/v1/notifications/unread-count').set(auth('cli13'));
+      expect(c.status).toBe(200);
+      expect(c.body.noLeidos).toBeGreaterThan(0);
+      await request(app).post('/api/v1/notifications/read').set(auth('cli13')).expect(204);
+      expect((await request(app).get('/api/v1/notifications/unread-count').set(auth('cli13'))).body.noLeidos).toBe(0);
+      const r = await request(app).post('/api/v1/auth/register').send({ nombre: 'Campo', email: 'campo@prueba.test', telefono: '123', password: 'Prueba1234', rol: 'cliente', aceptaPrivacidad: true });
+      expect(r.status).toBe(400);
+      expect(r.body.error.campo).toBe('telefono');
+    });
+
     test('CA-17.4 la búsqueda y el perfil incluyen insignias y progreso', async () => {
       const b = await request(app).get(`/api/v1/workers?oficioId=${cat.electricidad}&zonaId=${cat.lapaz}`).set(auth('cli13'));
       const t = b.body.find((x) => x.id === S.tra13.perfilId);

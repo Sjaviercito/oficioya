@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Aviso from '../components/Aviso';
 import { FilaSolicitud } from './MisSolicitudes';
+import useTitulo from '../hooks/useTitulo';
 
 const MENSAJE_VERIFICACION = {
   sin_enviar: 'Para recibir solicitudes necesitas completar tu perfil y enviar tu INE.',
@@ -15,6 +16,7 @@ export default function Trabajos() {
   const [disponibles, setDisponibles] = useState([]);
   const [mios, setMios] = useState([]);
   const [error, setError] = useState('');
+  useTitulo('Trabajos');
 
   useEffect(() => {
     (async () => {

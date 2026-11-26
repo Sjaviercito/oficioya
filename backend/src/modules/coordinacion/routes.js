@@ -43,6 +43,27 @@ router.post('/finish', requiereRol('trabajador'), async (req, res) => {
   res.json({ solicitud: await solicitudes.detalle(id, req.usuario) });
 });
 
+// v1.4 (RF-30): el cliente rechazó el presupuesto del diagnóstico; el trabajador cierra cobrando solo
+// la visita. Usa el mismo flujo de "terminado" (el cliente confirma o disputa; a las 72 h se cierra solo).
+router.post('/close-visit', requiereRol('trabajador'), async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const s = await comoTrabajadorAceptado(req.usuario.id, id);
+  const presupuestos = s.ajustes.filter((a) => a.tipo === 'presupuesto');
+  if (s.cotizacionAceptada.tipo !== 'diagnostico') throw errores.conflict('Solo aplica a visitas de diagnóstico', 'NO_ES_DIAGNOSTICO');
+  if (!['aceptada', 'en_curso'].includes(s.estado) || s.terminadaPorTrabajadorEn) throw errores.conflict('El trabajo no está activo', 'TRANSICION_INVALIDA');
+  if (s.ajustes.some((a) => a.estado === 'pendiente')) throw errores.conflict('Espera a que el cliente responda', 'AJUSTE_PENDIENTE');
+  if (presupuestos.some((a) => a.estado === 'aceptado') || !presupuestos.some((a) => a.estado === 'rechazado')) {
+    throw errores.conflict('Solo se cierra con la visita cuando el cliente rechazó el presupuesto', 'SIN_PRESUPUESTO_RECHAZADO');
+  }
+  const { count } = await prisma.solicitud.updateMany({
+    where: { id, estado: s.estado, terminadaPorTrabajadorEn: null },
+    data: { estado: 'en_curso', terminadaPorTrabajadorEn: new Date(), disputaMotivo: null },
+  });
+  if (count === 0) throw errores.conflict('La solicitud cambió; recarga e intenta de nuevo', 'TRANSICION_INVALIDA');
+  await avisar(null, s.clienteId, `El trabajador cerró el trabajo cobrando solo la visita. Confírmalo o indica qué falta en ${solicitudes.HORAS_PARA_DISPUTAR} horas.`, id);
+  res.json({ solicitud: await solicitudes.detalle(id, req.usuario) });
+});
+
 // RF-26: el cliente disputa el "terminado" con un motivo.
 const disputa = z.object({
   motivo: z.string({ message: 'Explica qué falta' }).trim().min(10, { message: 'Explica qué falta (mínimo 10 caracteres)' }).max(300),

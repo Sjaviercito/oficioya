@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { pesos } from '../api/catalogo';
 import Campo from './Campo';
+import { useConfirmar } from './Confirmar';
+import { Icono } from './Iconos';
+import { prepararFormulario } from '../api/imagenes';
+import { marcarCampo } from '../api/errores';
 
 const num = (v) => (v === '' || v === undefined || v === null ? 0 : Number(v));
 const redondear = (x) => Math.round(x * 100) / 100;
@@ -12,14 +16,22 @@ const redondear = (x) => Math.round(x * 100) / 100;
 export function Insignias({ t, compacto = false }) {
   const lista = t.insignias || [];
   const pct = t.sobreCotizadoPromedio;
-  if (!lista.length && (pct === null || pct === undefined)) return null;
+  const desacuerdos = t.cancelacionesPorDesacuerdo || 0;
+  if (!lista.length && (pct === null || pct === undefined) && !desacuerdos) return null;
   return (
-    <div className="insignias">
-      {lista.map((i) => <span key={i.clave} className="insignia">★ {i.nombre}</span>)}
-      {pct !== null && pct !== undefined && (
-        <span className="pequeno suave">{pct <= 0 ? 'Termina en lo cotizado o menos' : `Termina ${pct} % arriba de lo cotizado`}{compacto ? '' : ' (promedio)'}</span>
+    <>
+      {lista.length > 0 && (
+        <ul className="insignias" aria-label="Insignias" style={{ listStyle: 'none', padding: 0, margin: '0.4rem 0 0' }}>
+          {lista.map((i) => <li key={i.clave} className="insignia"><Icono.insignia />{i.nombre}</li>)}
+        </ul>
       )}
-    </div>
+      {pct !== null && pct !== undefined && (
+        <p className="pequeno suave" style={{ margin: '0.3rem 0 0' }}>{pct <= 0 ? 'Termina en lo cotizado o menos' : `Termina ${pct} % arriba de lo cotizado`}{compacto ? '' : ' en promedio'}</p>
+      )}
+      {desacuerdos > 0 && (
+        <p className="pequeno suave" style={{ margin: '0.2rem 0 0' }}>Dejó {desacuerdos} {desacuerdos === 1 ? 'trabajo' : 'trabajos'} por desacuerdo de precio</p>
+      )}
+    </>
   );
 }
 
@@ -28,7 +40,7 @@ export function DesgloseCotizacion({ c }) {
   if (c.tipo === 'diagnostico') {
     return (
       <div className="desglose">
-        <div><strong>Visita de diagnóstico: {pesos(c.costoVisita)}</strong></div>
+        <div><span className="precio">{pesos(c.costoVisita)}</span> <span className="pequeno suave">visita de diagnóstico</span></div>
         <div className="pequeno suave">
           {c.visitaAbonable ? 'Si haces el trabajo con él, la visita se descuenta del total.' : 'La visita se cobra aparte del trabajo.'}
           {' '}Después de revisar te manda un presupuesto que tú apruebas.
@@ -38,7 +50,7 @@ export function DesgloseCotizacion({ c }) {
   }
   return (
     <div className="desglose">
-      <div><strong>{pesos(c.monto)}</strong> <span className="pequeno suave">precio cerrado</span></div>
+      <div><span className="precio">{pesos(c.monto)}</span> <span className="pequeno suave">precio cerrado</span></div>
       <div className="pequeno suave">Mano de obra {pesos(c.manoObra)}{c.material > 0 ? ` · Material ${pesos(c.material)}` : ' · sin material'}</div>
     </div>
   );
@@ -53,15 +65,16 @@ export function Vigencia({ c }) {
 }
 
 // ---------- Formulario de cotización ----------
-export function FormularioCotizacion({ onEnviar, ocupado }) {
-  const [tipo, setTipo] = useState('cerrado');
-  const [manoObra, setManoObra] = useState('');
-  const [material, setMaterial] = useState('');
+export function FormularioCotizacion({ onEnviar, ocupado, existente, onCancelar }) {
+  const [tipo, setTipo] = useState(existente?.tipo || 'cerrado');
+  const [manoObra, setManoObra] = useState(existente?.manoObra ?? '');
+  const [material, setMaterial] = useState(existente?.material ?? '');
   const total = redondear(num(manoObra) + num(material));
 
   return (
     <section>
-      <h2>Enviar cotización</h2>
+      <h2 id="cotizar">{existente ? 'Actualizar mi cotización' : 'Enviar cotización'}</h2>
+      {existente && <p className="suave pequeno">Al guardar, el precio y la vigencia vuelven a contar desde hoy y le avisamos al cliente.</p>}
       <div className="selector" role="radiogroup" aria-label="Tipo de cotización">
         <button type="button" role="radio" aria-checked={tipo === 'cerrado'} className={tipo === 'cerrado' ? 'activo' : ''} onClick={() => setTipo('cerrado')}>
           Precio cerrado<span>Ya sé cuánto cuesta</span>
@@ -72,12 +85,12 @@ export function FormularioCotizacion({ onEnviar, ocupado }) {
       </div>
       <form onSubmit={(e) => {
         e.preventDefault();
-        const d = Object.fromEntries(new FormData(e.currentTarget));
-        if (tipo === 'cerrado') {
-          onEnviar({ tipo, manoObra: num(d.manoObra), material: num(d.material), tiempoEstimadoHoras: num(d.tiempoEstimadoHoras), vigenciaDias: num(d.vigenciaDias) });
-        } else {
-          onEnviar({ tipo, costoVisita: num(d.costoVisita), visitaAbonable: d.visitaAbonable === 'on', tiempoEstimadoHoras: num(d.tiempoEstimadoHoras) || 1, vigenciaDias: num(d.vigenciaDias) });
-        }
+        const form = e.currentTarget;
+        const d = Object.fromEntries(new FormData(form));
+        const datos = tipo === 'cerrado'
+          ? { tipo, manoObra: num(d.manoObra), material: num(d.material), tiempoEstimadoHoras: num(d.tiempoEstimadoHoras), vigenciaDias: num(d.vigenciaDias) }
+          : { tipo, costoVisita: num(d.costoVisita), visitaAbonable: d.visitaAbonable === 'on', tiempoEstimadoHoras: num(d.tiempoEstimadoHoras) || 1, vigenciaDias: num(d.vigenciaDias) };
+        onEnviar(datos, form);
       }}>
         {tipo === 'cerrado' ? (
           <>
@@ -93,17 +106,17 @@ export function FormularioCotizacion({ onEnviar, ocupado }) {
         ) : (
           <>
             <Campo etiqueta="Costo de la visita (MXN)" ayuda="Lo que cobras por ir a revisar.">
-              <input name="costoVisita" type="number" inputMode="decimal" min="1" step="0.01" required />
+              <input name="costoVisita" type="number" inputMode="decimal" min="1" step="0.01" required defaultValue={existente?.costoVisita ?? undefined} />
             </Campo>
             <label className="casilla">
-              <input name="visitaAbonable" type="checkbox" defaultChecked />
+              <input name="visitaAbonable" type="checkbox" defaultChecked={existente ? existente.visitaAbonable : true} />
               <span>Si el cliente acepta mi presupuesto, la visita se descuenta del total</span>
             </label>
             <p className="suave pequeno">Después de revisar envías el presupuesto desde aquí y el cliente lo aprueba antes de que empieces.</p>
           </>
         )}
         <Campo etiqueta="Tiempo estimado (horas)">
-          <input name="tiempoEstimadoHoras" type="number" inputMode="numeric" min="1" step="1" required={tipo === 'cerrado'} defaultValue={tipo === 'diagnostico' ? 1 : undefined} />
+          <input name="tiempoEstimadoHoras" type="number" inputMode="numeric" min="1" step="1" required={tipo === 'cerrado'} defaultValue={existente?.tiempoEstimadoHoras ?? (tipo === 'diagnostico' ? 1 : undefined)} />
         </Campo>
         <Campo etiqueta="Respeto este precio por" ayuda="Después de esta fecha el cliente ya no puede aceptarla.">
           <select name="vigenciaDias" defaultValue="7">
@@ -114,7 +127,10 @@ export function FormularioCotizacion({ onEnviar, ocupado }) {
             <option value="30">30 días</option>
           </select>
         </Campo>
-        <button className="boton accion ancho" disabled={ocupado}>Enviar cotización</button>
+        <div className="acciones" style={{ marginTop: 0 }}>
+          <button className="boton accion" disabled={ocupado}>{existente ? 'Guardar cotización' : 'Enviar cotización'}</button>
+          {onCancelar && <button type="button" className="boton secundario" onClick={onCancelar}>No cambiar</button>}
+        </div>
       </form>
     </section>
   );
@@ -152,6 +168,7 @@ function signo(n) { return n > 0 ? `+${pesos(n)}` : n < 0 ? `−${pesos(-n)}` : 
 
 export function Ajustes({ s, rel, ocupado, accion, id }) {
   const [tipo, setTipo] = useState(null);
+  const confirmar = useConfirmar();
   const cot = s.trabajadorAceptado;
   if (!cot) return null;
   const esTrabajador = rel === 'trabajadorAceptado';
@@ -171,11 +188,37 @@ export function Ajustes({ s, rel, ocupado, accion, id }) {
 
   if (!s.ajustes.length && !puedePresupuesto && !puedeCambio) return null;
 
-  const enviar = (form, exito) => accion(() => api.postForm(`/requests/${id}/adjustments`, form), exito);
+  async function rechazar(a) {
+    if (a.tipo === 'presupuesto') {
+      const ok = await confirmar({
+        titulo: '¿Rechazar el presupuesto?',
+        texto: [`Solo pagarás la visita de ${pesos(a.montoAnterior)}.`, 'El trabajador puede mandarte otro presupuesto o cerrar el trabajo cobrando solo la visita.'],
+        aceptar: 'Rechazar presupuesto', cancelar: 'Volver', peligro: true,
+      });
+      if (!ok) return;
+    }
+    accion(() => api.patch(`/requests/${id}/adjustments/${a.id}`, { decision: 'rechazar' }), a.tipo === 'presupuesto' ? `Rechazaste el presupuesto. Solo se cobra la visita (${pesos(a.montoAnterior)}).` : 'Rechazaste el cambio. El trabajo sigue con el precio anterior.');
+  }
+
+  async function cerrarConVisita() {
+    const ok = await confirmar({
+      titulo: '¿Cerrar cobrando solo la visita?',
+      texto: [`El trabajo se cierra por ${pesos(cot.costoVisita)}.`, `El cliente tiene ${s.horasParaDisputar ?? 72} horas para confirmarlo o decir qué falta.`],
+      aceptar: 'Cerrar con la visita',
+    });
+    if (ok) accion(() => api.post(`/requests/${id}/close-visit`), 'Listo. Le avisamos al cliente para que lo confirme.');
+  }
+
+  const enviar = async (form, exito) => {
+    const datos = await prepararFormulario(form);
+    return accion(() => api.postForm(`/requests/${id}/adjustments`, datos), exito);
+  };
+  const rechazadoPresupuesto = esDiag && !presupuesto && s.ajustes.some((a) => a.tipo === 'presupuesto' && a.estado === 'rechazado');
+  const puedeCerrarVisita = esTrabajador && rechazadoPresupuesto && activo && !pendiente;
 
   return (
     <section>
-      <h2>{esDiag && !presupuesto ? 'Presupuesto' : 'Cambios de precio'}</h2>
+      <h2 id="precio">{esDiag && !presupuesto ? 'Presupuesto' : 'Cambios de precio'}</h2>
       {esDiag && !presupuesto && esCliente && !pendiente && (
         <p className="suave">Cuando el trabajador revise, aquí te llegará su presupuesto para que lo apruebes. {cot.visitaAbonable ? `Los ${pesos(cot.costoVisita)} de la visita se descuentan del total.` : `La visita (${pesos(cot.costoVisita)}) se cobra aparte.`}</p>
       )}
@@ -203,7 +246,7 @@ export function Ajustes({ s, rel, ocupado, accion, id }) {
                 {a.tieneFoto && <FotoProtegida ruta={`/requests/${id}/adjustments/${a.id}/files/foto`} alt="Foto de evidencia" />}
                 {a.tieneTicket && (
                   <div className="pequeno" style={{ marginTop: '0.35rem' }}>
-                    🧾 Ticket por {pesos(a.ticketMonto)}{a.ticketMonto < a.deltaMaterial ? ` — salió más barato, el total bajó ${pesos(a.deltaMaterial - a.ticketMonto)}` : ''}
+                    <Icono.ticket style={{ width: 16, height: 16, verticalAlign: '-3px' }} /> Ticket por {pesos(a.ticketMonto)}{a.ticketMonto < a.deltaMaterial ? ` — salió más barato, el total bajó ${pesos(a.deltaMaterial - a.ticketMonto)}` : ''}
                     {' '}<FotoProtegida ruta={`/requests/${id}/adjustments/${a.id}/files/ticket`} alt="Ticket" />
                   </div>
                 )}
@@ -216,15 +259,14 @@ export function Ajustes({ s, rel, ocupado, accion, id }) {
                       onClick={() => accion(() => api.patch(`/requests/${id}/adjustments/${a.id}`, { decision: 'aceptar' }), a.tipo === 'presupuesto' ? 'Aprobaste el presupuesto. El trabajador ya puede empezar.' : 'Aceptaste el cambio. El total quedó actualizado.')}>
                       {a.tipo === 'presupuesto' ? `Aprobar ${pesos(a.montoPropuesto)}` : `Aceptar ${pesos(a.montoPropuesto)}`}
                     </button>
-                    <button className="boton secundario" disabled={ocupado}
-                      onClick={() => accion(() => api.patch(`/requests/${id}/adjustments/${a.id}`, { decision: 'rechazar' }), a.tipo === 'presupuesto' ? `Rechazaste el presupuesto. Solo se cobra la visita (${pesos(a.montoAnterior)}).` : 'Rechazaste el cambio. El trabajo sigue con el precio anterior.')}>
+                    <button className="boton secundario" disabled={ocupado} onClick={() => rechazar(a)}>
                       {a.tipo === 'presupuesto' ? `No, solo pago la visita (${pesos(a.montoAnterior)})` : `Seguir con ${pesos(a.montoAnterior)}`}
                     </button>
                   </div>
                 )}
                 {esTrabajador && a.estado === 'aceptado' && a.deltaMaterial > 0 && !a.tieneTicket && activo && (
                   <SubirTicket max={a.deltaMaterial} ocupado={ocupado}
-                    onEnviar={(form) => accion(() => api.postForm(`/requests/${id}/adjustments/${a.id}/ticket`, form), 'Ticket guardado. Cuenta para tu insignia “Comprueba sus gastos”.')} />
+                    onEnviar={async (form) => { const datos = await prepararFormulario(form); return accion(() => api.postForm(`/requests/${id}/adjustments/${a.id}/ticket`, datos), 'Ticket guardado. Cuenta para tu insignia “Comprueba sus gastos”.'); }} />
                 )}
                 {esTrabajador && a.estado === 'rechazado' && CONTAR_TOPE.includes(a.tipo) && a.tipo !== 'mas_facil' && activo && (
                   <p className="pequeno suave" style={{ margin: '0.5rem 0 0' }}>
@@ -237,6 +279,14 @@ export function Ajustes({ s, rel, ocupado, accion, id }) {
             );
           })}
         </ul>
+      )}
+
+      {puedeCerrarVisita && (
+        <div className="siguiente" style={{ marginTop: '1rem' }}>
+          <p className="siguiente-titulo">El cliente rechazó tu presupuesto</p>
+          <p>Puedes mandarle otro o cerrar el trabajo cobrando solo la visita ({pesos(cot.costoVisita)}).</p>
+          <button type="button" className="boton secundario ancho" disabled={ocupado} onClick={cerrarConVisita}>Cerrar cobrando solo la visita</button>
+        </div>
       )}
 
       {puedePresupuesto && (
@@ -358,7 +408,7 @@ export function Preguntas({ s, rel, ocupado, accion, id }) {
 
   return (
     <section>
-      <h2>Preguntas</h2>
+      <h2 id="preguntas">Preguntas</h2>
       {esCliente && <p className="suave pequeno">Responder ayuda a que te coticen más exacto y haya menos cambios de precio después.</p>}
       {visibles.length > 0 && (
         <ul className="lista">

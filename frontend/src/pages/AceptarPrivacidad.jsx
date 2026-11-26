@@ -3,12 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSesion } from '../api/sesion';
 import Aviso from '../components/Aviso';
+import useTitulo from '../hooks/useTitulo';
 
 // Para cuentas creadas antes del aviso, o cuando el aviso cambia de versión.
 export default function AceptarPrivacidad() {
   const { actualizarUsuario } = useSesion();
   const navegar = useNavigate();
   const [error, setError] = useState('');
+  useTitulo('Aviso de privacidad actualizado');
   return (
     <>
       <h1>Antes de continuar</h1>

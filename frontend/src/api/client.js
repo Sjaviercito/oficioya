@@ -36,9 +36,10 @@ export function refreshGuardado() {
 }
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, campo) {
     super(message);
     this.status = status;
+    this.campo = campo; // v1.4: campo con error (validación del servidor)
   }
 }
 
@@ -88,7 +89,7 @@ async function llamar(ruta, { method = 'GET', body, form, raw = false } = {}, re
   if (r.status === 204) return null;
   const esJson = (r.headers.get('content-type') || '').includes('application/json');
   const datos = esJson ? await r.json().catch(() => null) : null;
-  if (!r.ok) throw new ApiError(r.status, datos?.error?.message || 'Ocurrió un error, intenta de nuevo');
+  if (!r.ok) throw new ApiError(r.status, datos?.error?.message || 'Ocurrió un error, intenta de nuevo', datos?.error?.campo);
   // Si el servidor respondió algo que no es la API (por ejemplo una página HTML), no se procesa.
   if (!esJson || datos === null) throw new ApiError(r.status, 'No se pudo conectar con el servidor de OficioYa. Intenta de nuevo en un minuto.');
   return datos;

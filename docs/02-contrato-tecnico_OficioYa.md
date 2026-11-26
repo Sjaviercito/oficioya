@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Equipo / Autor(es) | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
-| Versión | 1.3 |
+| Versión | 1.4 |
 | Fecha | 2026-11-26 |
 | Documento de origen | [01-vision-alcance_OficioYa_Santiago.md](./01-vision-alcance_OficioYa_Santiago.md) |
 | Estado | Vigente (entrega final) |
@@ -291,6 +291,34 @@ Cualquier transición que no aparezca en esta tabla responde `409` y no modifica
 - **Momentos de recálculo:** al registrar una reseña, al completar una solicitud, al registrar una cancelación atribuible y en el proceso diario de las 03:00 (ADR-06).
 
 ---
+
+### 3.9 Cambios de la v1.4: usabilidad, accesibilidad y huecos de precios
+
+**Huecos de la v1.3 corregidos**
+
+- **Renovar una cotización (RF-06):** `PUT /requests/:id/quotes/mine` con el mismo cuerpo que `POST`. Solo el autor, con su cotización `pendiente` y la solicitud `abierta` o `cotizada`; reinicia la vigencia y avisa al cliente. Sin cotización → `404`; ya aceptada o rechazada → `409`. Antes, una cotización vencida dejaba al trabajador fuera de la solicitud para siempre (`409 COTIZACION_DUPLICADA`).
+- **Cerrar solo con la visita (RF-30):** `POST /requests/:id/close-visit`, solo el trabajador aceptado, en un diagnóstico con presupuesto **rechazado** y ninguno aceptado, sin cambios pendientes. Usa el flujo de "terminado" de RF-26 (el cliente confirma o disputa; a las 72 h se cierra solo) y el total queda en el costo de la visita. Si no se cumple → `409`.
+- **Cancelaciones por desacuerdo visibles (RF-32):** el perfil, la búsqueda, las cotizaciones y el perfil público incluyen `cancelacionesPorDesacuerdo`. No baja el ranking; el próximo cliente lo ve (control por reputación en lugar de revisar cada foto).
+
+**Interfaz (WCAG 2.2 AA y heurísticas de Nielsen)**
+
+| Cambio | Norma o heurística |
+|---|---|
+| El resultado de cada acción aparece en un mensaje flotante abajo, visible aunque el botón esté al final de la página; los éxitos se van solos y los errores se quedan hasta cerrarlos | Nielsen 1 (visibilidad del estado), WCAG 4.1.3 (mensajes de estado) |
+| Confirmación con resumen antes de aceptar una cotización, rechazar un presupuesto, cerrar con la visita, marcar o confirmar "terminado" (`<dialog>` nativo) | Nielsen 5 (prevención de errores), WCAG 3.3.4 |
+| Navegación inferior en el celular con íconos y texto, todo visible; superior en pantallas de 768 px o más | Patrón móvil estándar; antes "Mi cuenta" quedaba oculta |
+| Tarjeta "Te toca / En qué va" con la siguiente acción y un botón que lleva a la sección | Nielsen 6 (reconocer antes que recordar) |
+| Pasos con texto ("Paso 3 de 5: Trabajador elegido") | WCAG 1.4.1 (no depender solo del color) |
+| Título propio por pantalla | WCAG 2.4.2 |
+| Objetivos táctiles de 44 px o más (volver, nombres, logo, menú) | WCAG 2.5.8 (mínimo 24 px), guías de Apple y Google |
+| Enlace "Saltar al contenido" y foco en el título al cambiar de pantalla | WCAG 2.4.1 y 2.4.3 |
+| Contador de avisos sin leer en el menú: `GET /notifications/unread-count` → `{ noLeidos }` | Compensa la falta de push (fuera de alcance) |
+| Errores de validación en el campo que falló: el servidor agrega `campo` al error `400 VALIDACION` y la interfaz marca el campo, lo enfoca y muestra el mensaje | WCAG 3.3.1 y 3.3.3 |
+| Fuente Archivo alojada en el propio servidor; la CSP ya no permite dominios de Google | Privacidad (no se envía la IP a terceros) y rendimiento |
+| Las fotos se reducen en el navegador a 1600 px en JPG al 82 % antes de subirlas | Datos móviles y espacio de la base (ADR-05) |
+| Sistema visual: botones con canto inferior que se hunde al presionar, foco visible de doble anillo, insignias, franja de azulejo como único adorno | Consistencia (Nielsen 4) |
+
+**Criterios nuevos:** CA-06.8 (renovar una cotización vencida; sin cotización → 404; aceptada → 409), CA-30.8 (cerrar con la visita solo tras presupuesto rechazado; el cliente → 403; dos veces → 409; el cliente confirma), CA-32.2 (contador de desacuerdos en el perfil privado y público), CA-11.3 (contador de no leídos baja a 0 al leer), CA-UX.1 (el error de validación indica el campo), CA-A11Y.1 (axe-core sin violaciones WCAG 2.2 A/AA en 14 pantallas, a 360 px, con las cuatro cuentas).
 
 ### 3.8 Cambios de la v1.3: precios (`docs/06-analisis-ajuste-de-precio_OficioYa.md`)
 
@@ -856,6 +884,7 @@ REGLAS
 |---|---|---|---|
 | 0.1 | 2026-09-22 | Versión inicial | Javier Alejandro Santiago Salinas, Alejandro Lita Camacho, Jesus Eduardo Pineda Alcazar y Manuel Alfonso Castillo Moar |
 | 0.3 | 2026-11-04 | Ajustes de la construcción del MVP: despliegue frontend en subdominio + API en Render, Node 22, Prisma sin motor binario, tabla `refresh_token`, endpoints de apoyo a la interfaz (ver trazabilidad de la Etapa 3) | Equipo 6 |
+| 1.4 | 2026-11-26 | Usabilidad y accesibilidad (WCAG 2.2 AA): mensajes flotantes, confirmaciones, navegación inferior, "Te toca", pasos con texto, títulos, foco, errores por campo, contador de avisos, fuente local, compresión de fotos y nuevo sistema visual; renovar cotización, cerrar con la visita y contador de desacuerdos | Equipo 6 |
 | 1.3 | 2026-11-26 | Precios: cotización desglosada con vigencia o visita de diagnóstico abonable (RF-30), cambios de precio por tipo con foto, bajas automáticas y tope solo sobre la mano de obra, ticket que baja el total, cancelación sin penalización con evidencia (RF-32), insignias y "termina X % arriba" (RF-31), preguntas antes de cotizar (RF-21) | Equipo 6 |
 | 1.2 | 2026-11-26 | Análisis causa–consecuencia: ranking solo penaliza ajustes rechazados, aviso de privacidad, celular y contacto por WhatsApp, horario de visita, terminado por el trabajador con 72 h, reportes en ambos sentidos, cambiar contraseña, eliminar cuenta, demo controlada y ping de disponibilidad | Equipo 6 |
 | 1.1 | 2026-11-26 | Mejoras: archivos persistentes en la base (ADR-05 revisado), perfil público (RF-18), tope por oficio (RF-19), ajustes con peso de 10 % en el ranking, avisos por zona, reactivación, límite de intentos de login y CSP | Equipo 6 |

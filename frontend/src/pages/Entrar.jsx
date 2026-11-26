@@ -3,17 +3,21 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useSesion } from '../api/sesion';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
+import { marcarCampo } from '../api/errores';
+import useTitulo from '../hooks/useTitulo';
 
 export default function Entrar() {
   const { usuario, entrar } = useSesion();
   const navegar = useNavigate();
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
+  useTitulo('Entrar');
 
   if (usuario) return <Navigate to="/" replace />;
 
   async function enviar(e) {
     e.preventDefault();
+    const form = e.currentTarget;
     const datos = Object.fromEntries(new FormData(e.currentTarget));
     setError('');
     setEnviando(true);
@@ -21,7 +25,7 @@ export default function Entrar() {
       await entrar('/auth/login', datos);
       navegar('/');
     } catch (err) {
-      setError(err.message);
+      if (!marcarCampo(form, err)) setError(err.message);
     } finally {
       setEnviando(false);
     }

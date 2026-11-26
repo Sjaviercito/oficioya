@@ -3,17 +3,21 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useSesion } from '../api/sesion';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
+import { marcarCampo } from '../api/errores';
+import useTitulo from '../hooks/useTitulo';
 
 export default function Registro() {
   const { usuario, entrar } = useSesion();
   const navegar = useNavigate();
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
+  useTitulo('Crear cuenta');
 
   if (usuario) return <Navigate to="/" replace />;
 
   async function enviar(e) {
     e.preventDefault();
+    const form = e.currentTarget;
     const datos = Object.fromEntries(new FormData(e.currentTarget));
     datos.aceptaPrivacidad = datos.aceptaPrivacidad === 'on';
     setError('');
@@ -22,7 +26,7 @@ export default function Registro() {
       const u = await entrar('/auth/register', datos);
       navegar(u.rol === 'trabajador' ? '/perfil' : '/');
     } catch (err) {
-      setError(err.message);
+      if (!marcarCampo(form, err)) setError(err.message);
     } finally {
       setEnviando(false);
     }
@@ -52,8 +56,8 @@ export default function Registro() {
         <Campo etiqueta="Contraseña" ayuda="Mínimo 8 caracteres.">
           <input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} />
         </Campo>
-        <label className="opcion" style={{ borderRadius: 'var(--radio)', alignItems: 'flex-start' }}>
-          <input type="checkbox" name="aceptaPrivacidad" required style={{ marginTop: '0.3rem' }} />
+        <label className="casilla">
+          <input type="checkbox" name="aceptaPrivacidad" required />
           <span>Acepto el <Link to="/privacidad" target="_blank">aviso de privacidad</Link> y los <Link to="/terminos" target="_blank">términos y condiciones</Link></span>
         </label>
         <button className="boton accion ancho" disabled={enviando}>{enviando ? 'Creando cuenta…' : 'Crear cuenta'}</button>

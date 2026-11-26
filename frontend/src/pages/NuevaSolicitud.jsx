@@ -4,6 +4,9 @@ import { api } from '../api/client';
 import { hoyLocal, useCatalogo } from '../api/catalogo';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
+import { marcarCampo } from '../api/errores';
+import { prepararFormulario } from '../api/imagenes';
+import useTitulo from '../hooks/useTitulo';
 
 // RF-05 en una sola pantalla (RNF-06: máximo 5 pantallas desde el inicio).
 export default function NuevaSolicitud() {
@@ -11,10 +14,12 @@ export default function NuevaSolicitud() {
   const navegar = useNavigate();
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
+  useTitulo('Pedir un trabajo');
 
   async function enviar(e) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const el = e.currentTarget;
+    const form = new FormData(el);
     if (form.getAll('fotos').filter((f) => f.size > 0).length > 5) {
       setError('Máximo 5 fotos');
       return;
@@ -23,10 +28,10 @@ export default function NuevaSolicitud() {
     setError('');
     setEnviando(true);
     try {
-      const { solicitud } = await api.postForm('/requests', form);
+      const { solicitud } = await api.postForm('/requests', await prepararFormulario(form));
       navegar(`/solicitudes/${solicitud.id}`);
     } catch (err) {
-      setError(err.message);
+      if (!marcarCampo(el, err)) setError(err.message);
       setEnviando(false);
     }
   }
@@ -61,7 +66,7 @@ export default function NuevaSolicitud() {
         <Campo etiqueta="¿Para cuándo?">
           <input name="fechaDeseada" type="date" required min={hoyLocal()} defaultValue={hoyLocal()} />
         </Campo>
-        <Campo etiqueta="Fotos (opcional)" ayuda="Hasta 5 fotos JPG o PNG de máximo 5 MB cada una.">
+        <Campo etiqueta="Fotos (opcional)" ayuda="Hasta 5 fotos JPG o PNG. Se reducen automáticamente antes de subirlas.">
           <input name="fotos" type="file" accept="image/jpeg,image/png" multiple />
         </Campo>
         <button className="boton accion ancho" disabled={enviando}>{enviando ? 'Publicando…' : 'Publicar solicitud'}</button>

@@ -62,6 +62,39 @@ async function crearEnTx(usuarioId, solicitudId, datos) {
   });
 }
 
+// v1.4: el trabajador actualiza su cotización pendiente (por ejemplo, porque venció) mientras la
+// solicitud siga recibiendo cotizaciones. La vigencia vuelve a contar desde ahora.
+async function actualizar(usuarioId, solicitudId, datos) {
+  const r = await prisma.$transaction(async (tx) => {
+    const perfil = await solicitudes.perfilTrabajadorDe(usuarioId, tx);
+    if (!perfil || perfil.estadoVerificacion !== 'aprobado') throw errores.forbidden('Tu cuenta debe estar verificada para cotizar');
+    if (perfil.suspendido) throw errores.forbidden('Tu cuenta está suspendida por reportes de clientes');
+    const s = await solicitudes.cargar(solicitudId, tx);
+    const mia = s.cotizaciones.find((c) => c.trabajadorId === perfil.id);
+    if (!mia) throw errores.notFound('No tienes una cotización en esta solicitud');
+    validarTransicion('recibirCotizacion', s.estado);
+    if (mia.estado !== 'pendiente') throw errores.conflict('Esta cotización ya no se puede cambiar', 'TRANSICION_INVALIDA');
+    const diag = datos.tipo === 'diagnostico';
+    const c = await tx.cotizacion.update({
+      where: { id: mia.id },
+      data: {
+        monto: diag ? datos.costoVisita : datos.manoObra + datos.material,
+        tiempoEstimadoHoras: datos.tiempoEstimadoHoras,
+        tipo: datos.tipo,
+        vigenciaDias: datos.vigenciaDias,
+        creadaEn: new Date(),
+        manoObra: diag ? null : datos.manoObra,
+        material: diag ? null : datos.material,
+        costoVisita: diag ? datos.costoVisita : null,
+        visitaAbonable: diag ? datos.visitaAbonable : true,
+      },
+    });
+    return { id: c.id, tiempoEstimadoHoras: c.tiempoEstimadoHoras, estado: c.estado, ...solicitudes.formaCotizacion(c) };
+  });
+  await avisar(null, (await prisma.solicitud.findUnique({ where: { id: solicitudId }, select: { clienteId: true } })).clienteId, 'Un trabajador actualizó su cotización.', solicitudId);
+  return r;
+}
+
 // Solo el cliente dueño ve todas las cotizaciones de su solicitud.
 async function listar(usuarioId, solicitudId) {
   const s = await prisma.solicitud.findUnique({ where: { id: solicitudId }, select: { clienteId: true } });
@@ -93,4 +126,4 @@ async function listar(usuarioId, solicitudId) {
   }));
 }
 
-module.exports = { crear, listar };
+module.exports = { crear, listar, actualizar };

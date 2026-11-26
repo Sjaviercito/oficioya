@@ -1,7 +1,7 @@
-# OficioYa — sistema 2.3
+# OficioYa — sistema 2.4
 
 Plataforma web mobile-first que conecta clientes de Puebla con trabajadores de oficios verificados.
-Construida según el contrato técnico v1.3 (`docs/02-contrato-tecnico_OficioYa.md`). La v1.3 agrega cotización desglosada con vigencia, visita de diagnóstico, cambios de precio con foto y ticket, insignias y preguntas antes de cotizar (`docs/06-analisis-ajuste-de-precio_OficioYa.md`).
+Construida según el contrato técnico v1.4 (`docs/02-contrato-tecnico_OficioYa.md`). La v1.4 mejora la usabilidad y accesibilidad (WCAG 2.2 AA). La v1.3 agregó cotización desglosada con vigencia, visita de diagnóstico, cambios de precio con foto y ticket, insignias y preguntas antes de cotizar (`docs/06-analisis-ajuste-de-precio_OficioYa.md`).
 
 - **backend/**: API REST en `/api/v1` — Node.js 22, Express 5, Prisma 6 (sin motor binario, adaptador `pg`) y PostgreSQL 16.
 - **frontend/**: React 18 + Vite + React Router. En producción la API sirve el frontend compilado desde el mismo dominio.

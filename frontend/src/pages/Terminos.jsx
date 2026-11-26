@@ -1,4 +1,7 @@
+import useTitulo from '../hooks/useTitulo';
+
 export default function Terminos() {
+  useTitulo('Términos y condiciones');
   return (
     <article>
       <h1>Términos y condiciones</h1>

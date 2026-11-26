@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
+import useTitulo from '../hooks/useTitulo';
 
 export default function Verificaciones() {
   const [lista, setLista] = useState(null);
   const [actual, setActual] = useState(null);
   const [aviso, setAviso] = useState({ tipo: '', texto: '' });
+  useTitulo('Verificaciones');
 
   const cargar = useCallback(() => {
     api.get('/admin/verifications?estado=pendiente').then(setLista).catch((e) => setAviso({ tipo: 'error', texto: e.message }));

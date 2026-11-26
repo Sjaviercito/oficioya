@@ -1,6 +1,8 @@
+import useTitulo from '../hooks/useTitulo';
 import { CONTACTO_PRIVACIDAD, RESPONSABLE, VERSION_PRIVACIDAD } from '../legal';
 
 export default function Privacidad() {
+  useTitulo('Aviso de privacidad');
   return (
     <article>
       <h1>Aviso de privacidad</h1>

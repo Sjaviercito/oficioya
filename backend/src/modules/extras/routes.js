@@ -18,6 +18,10 @@ router.get('/notifications', async (req, res) => {
   });
   res.json(lista);
 });
+// v1.4: contador para el menú (no hay notificaciones push).
+router.get('/notifications/unread-count', async (req, res) => {
+  res.json({ noLeidos: await prisma.notificacion.count({ where: { usuarioId: req.usuario.id, leida: false } }) });
+});
 router.post('/notifications/read', async (req, res) => {
   await prisma.notificacion.updateMany({ where: { usuarioId: req.usuario.id, leida: false }, data: { leida: true } });
   res.status(204).end();
@@ -146,7 +150,7 @@ router.get('/workers/:trabajadorId/public', async (req, res) => {
     porcentajeConAjuste: p.trabajosCompletados > 0 ? Math.round((p.trabajosConAjuste / p.trabajosCompletados) * 100) : null,
     esNuevo: p.puntuacionRanking === null,
     resenas: p.resenas,
-    ...(() => { const r = repPublica[p.id] || {}; return { sobreCotizadoPromedio: r.sobreCotizadoPromedio ?? null, insignias: r.insignias || [] }; })(),
+    ...(() => { const r = repPublica[p.id] || {}; return { sobreCotizadoPromedio: r.sobreCotizadoPromedio ?? null, insignias: r.insignias || [], cancelacionesPorDesacuerdo: r.cancelacionesPorDesacuerdo || 0 }; })(),
   });
 });
 

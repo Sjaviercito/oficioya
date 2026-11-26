@@ -3,6 +3,11 @@ import { api } from '../api/client';
 import { useCatalogo } from '../api/catalogo';
 import Aviso from '../components/Aviso';
 import Campo from '../components/Campo';
+import { Icono } from '../components/Iconos';
+import { useNotificar } from '../components/Notificador';
+import { comprimir, prepararFormulario } from '../api/imagenes';
+import { marcarCampo } from '../api/errores';
+import useTitulo from '../hooks/useTitulo';
 
 const ETIQUETA_ESTADO = {
   sin_enviar: 'Sin enviar',
@@ -16,6 +21,8 @@ export default function MiPerfil() {
   const [perfil, setPerfil] = useState(null);
   const [aviso, setAviso] = useState({ tipo: '', texto: '' });
   const [ocupado, setOcupado] = useState(false);
+  const notificar = useNotificar();
+  useTitulo('Mi perfil');
 
   useEffect(() => {
     api.get('/workers/me/profile').then((r) => setPerfil(r.perfil)).catch((e) => setAviso({ tipo: 'error', texto: e.message }));
@@ -29,28 +36,28 @@ export default function MiPerfil() {
     form.append('zonaIds', JSON.stringify(fd.getAll('zona').map(Number)));
     form.append('experienciaAnios', fd.get('experienciaAnios'));
     const foto = fd.get('foto');
-    if (foto && foto.size > 0) form.append('foto', foto);
-    await enviar(() => api.putForm('/workers/me/profile', form), 'Perfil guardado.');
+    if (foto && foto.size > 0) form.append('foto', await comprimir(foto));
+    await enviar(() => api.putForm('/workers/me/profile', form), 'Perfil guardado.', e.target);
   }
 
   async function enviarIdentidad(e) {
     e.preventDefault();
-    await enviar(() => api.postForm('/workers/me/identity', new FormData(e.currentTarget)), 'Fotos enviadas. Tu identidad está en revisión.');
+    const el = e.currentTarget;
+    const datos = await prepararFormulario(new FormData(el));
+    await enviar(() => api.postForm('/workers/me/identity', datos), 'Fotos enviadas. Tu identidad está en revisión.', el);
   }
 
-  async function enviar(fn, exito) {
+  async function enviar(fn, exito, form) {
     setOcupado(true);
-    setAviso({ tipo: '', texto: '' });
     try {
       const r = await fn();
       if (r?.perfil) setPerfil(r.perfil);
       else setPerfil((await api.get('/workers/me/profile')).perfil);
-      setAviso({ tipo: 'ok', texto: exito });
+      notificar.ok(exito);
     } catch (err) {
-      setAviso({ tipo: 'error', texto: err.message });
+      if (!marcarCampo(form, err)) notificar.error(err.message);
     } finally {
       setOcupado(false);
-      window.scrollTo({ top: 0 });
     }
   }
 
@@ -71,6 +78,7 @@ export default function MiPerfil() {
         <div className="dato"><dt>Trabajos completados</dt><dd>{perfil.trabajosCompletados}</dd></div>
         <div className="dato"><dt>Tasa de cancelación</dt><dd>{Math.round(perfil.tasaCancelacion * 100)} %</dd></div>
         <div className="dato"><dt>Con ajuste de precio</dt><dd>{perfil.porcentajeConAjuste === null ? '—' : `${perfil.porcentajeConAjuste} %`}</dd></div>
+        {perfil.cancelacionesPorDesacuerdo > 0 && <div className="dato"><dt>Cancelados por precio</dt><dd>{perfil.cancelacionesPorDesacuerdo} (no bajan tu reputación, pero los clientes los ven)</dd></div>}
         <div className="dato"><dt>Sobre lo cotizado</dt><dd>{perfil.sobreCotizadoPromedio == null ? 'Se mide a partir de 5 trabajos' : `Tus trabajos terminan ${perfil.sobreCotizadoPromedio} % arriba en promedio`}</dd></div>
       </dl>
 
@@ -82,7 +90,7 @@ export default function MiPerfil() {
           <ul className="lista" style={{ marginTop: 0 }}>
             {perfil.progresoInsignias.map((i) => (
               <li key={i.clave} className={`progreso-insignia${i.obtenida ? ' obtenida' : ''}`}>
-                <span className="marca" aria-hidden="true">★</span>
+                <span className="marca-insignia" aria-hidden="true"><Icono.insignia /></span>
                 <div>
                   <strong>{i.nombre}</strong>{i.obtenida && <span className="sello" style={{ marginLeft: '0.4rem' }}>Obtenida</span>}
                   <div className="pequeno suave">{i.descripcion}</div>

@@ -8,8 +8,8 @@
 | URL del sistema final | https://equipo6.centrofuyuan.com |
 | URL de la API | https://oficioya-api.onrender.com (salud: `/api/v1/health`) |
 | Repositorio | https://github.com/Sjaviercito/oficioya (privado; pedir acceso al equipo) |
-| Versión final del sistema | 2.3 (2026-11-26) |
-| Versión final del contrato técnico | 1.3: `docs/02-contrato-tecnico_OficioYa.md` en el repositorio |
+| Versión final del sistema | 2.4 (2026-11-26) |
+| Versión final del contrato técnico | 1.4: `docs/02-contrato-tecnico_OficioYa.md` en el repositorio |
 
 ### Acceso para evaluar
 
@@ -139,6 +139,16 @@ Prioridad: severidad (impacto en el usuario o en la seguridad) × frecuencia. Se
 | **Cambio en el código** | Migración `20261126200000_v13_precios` (desglose y vigencia en `cotizacion`, tipo, foto y ticket en `ajuste_precio`, métricas en `solicitud`, tabla `pregunta`; los trabajos anteriores se migran con base = cotización). Backend: `adjustments/reglas.js` (reescrito), `adjustments/service.js` y `routes.js` (foto, ticket), `quotes/*`, `requests/service.js` (vigencia, cancelación con evidencia, métricas), `workers/reputacion.js` (insignias), `preguntas/routes.js`. Frontend: `components/Precios.jsx` (cotizar, desglose, cambios de precio, ticket, preguntas, insignias), `DetalleSolicitud.jsx`, `TarjetaTrabajador.jsx`, `Trabajador.jsx`, `MiPerfil.jsx`. |
 | **Verificación** | **135 pruebas pasando** (21 nuevas). Recorrido con Playwright a 360 px con CSP activa: pregunta con teléfono bloqueada → pregunta y respuesta → cotización cerrada desglosada y de diagnóstico → el cliente compara con insignias → acepta la visita → presupuesto con foto ($450 + $150 = $600, visita descontada) → el cliente ve la foto protegida y aprueba → pieza extra con foto → aceptada → ticket más barato baja el total de $850 a $800 → aviso de tope en mano de obra → daño oculto con foto rechazado → el trabajador ve la cancelación sin penalización (el cliente no ve ese motivo) → insignias y avance en "Mi perfil". Sin errores de consola ni desbordes. |
 
+### C-08: Contrato v1.4, usabilidad y accesibilidad
+
+| Paso | Detalle |
+|---|---|
+| **Origen** | Revisión del equipo antes de probar la v1.3 ("¿qué debería cambiar del frontend para que cumpla usabilidad y estándares, y que no se vea chafa?"). Auditoría con axe-core (WCAG 2.2 AA) en 14 pantallas, medición de objetivos táctiles y lectura del código. axe no encontró violaciones; los hallazgos fueron de usabilidad: mensajes de resultado fuera de la vista, acciones irreversibles sin confirmación, menú cortado en el celular ("Mi cuenta" oculta), página de detalle sin "qué sigue", pasos solo con color, mismo título en todas las pantallas, enlaces de 17 px de alto, foco que no se movía al cambiar de pantalla, errores sin marcar el campo y fuente cargada desde Google. Además, tres huecos de la v1.3: cotización vencida sin forma de renovarla, presupuesto rechazado sin forma clara de cerrar con la visita y fotos sin comprimir. |
+| **Requisito o criterio afectado** | RF-06, RF-11, RF-30 y RF-32 ampliados; RNF-05 (responsive) reforzado. Criterios nuevos CA-06.8, CA-11.3, CA-30.8, CA-32.2, CA-UX.1 y CA-A11Y.1. |
+| **Cambio en el contrato** | v1.3 → **v1.4**, sección 3.9 con la tabla de cambios y la norma o heurística que atiende cada uno. |
+| **Cambio en el código** | Backend: `quotes/*` (`PUT /quotes/mine`), `coordinacion/routes.js` (`close-visit`), `workers/reputacion.js` (desacuerdos), `extras/routes.js` (`unread-count`), `shared/errors.js` (`campo`). Frontend: `Layout.jsx` (navegación inferior y superior, saltar al contenido, foco, contador), `Notificador.jsx`, `Confirmar.jsx`, `Iconos.jsx`, `hooks/useTitulo.js`, `api/imagenes.js`, `api/errores.js`, `Pasos.jsx`, tarjeta "Te toca" en `DetalleSolicitud.jsx`, `Precios.jsx` (renovar, cerrar con la visita, confirmaciones, compresión), `styles.css` reescrito, fuente en `src/assets/fonts` (licencia OFL) y CSP sin Google en `.htaccess`. |
+| **Verificación** | **139 pruebas pasando** (4 nuevas). axe-core: **0 violaciones** WCAG 2.2 A/AA en 14 pantallas. Recorrido con Playwright a 360 px con CSP: diálogo al aceptar la cotización, mensajes flotantes en cada acción, "Te toca" correcto para cliente y trabajador, títulos por pantalla, contador de avisos. Teclado: el primer Tab llega a "Saltar al contenido"; al navegar, el foco queda en el título; un celular inválido al registrarse marca y enfoca ese campo. Una foto de 3000 × 2000 px y 5.4 MB se guardó en 810 KB (en fotos reales queda en 200 a 400 KB). Vista de escritorio a 1280 px con el menú superior. |
+
 ---
 
 ## 4. Trazabilidad final
@@ -150,12 +160,12 @@ Prioridad: severidad (impacto en el usuario o en la seguridad) × frecuencia. Se
 | RF-03 Verificación de identidad | Must | CA-03.1 a CA-03.5, CA-ARCH.1 | `modules/admin/*`, `shared/storage`, `shared/crypto.js` · `pages/Verificaciones.jsx` | ✅ | Desde v1.1 las imágenes cifradas viven en PostgreSQL |
 | RF-04 Búsqueda por ranking | Must | CA-04.1 a CA-04.4 | `workers/service.js`, `ranking/calculo.js` · `pages/Buscar.jsx` | ✅ | Ahora muestra el porcentaje con ajuste |
 | RF-05 Crear solicitud | Must | CA-05.1 a CA-05.4 | `modules/requests/*` · `pages/NuevaSolicitud.jsx` | ✅ | |
-| RF-06 Enviar cotización | Must | CA-06.1 a CA-06.7 | `modules/quotes/*` · `components/Precios.jsx` | ✅ | v1.3: desglose, vigencia y visita de diagnóstico (C-07) |
+| RF-06 Enviar cotización | Must | CA-06.1 a CA-06.8 | `modules/quotes/*` · `components/Precios.jsx` | ✅ | v1.3: desglose, vigencia y visita de diagnóstico (C-07) |
 | RF-07 Estados de la solicitud | Must | CA-07.1 a CA-07.5 y CA-16.8 | `requests/estados.js`, `requests/service.js` | ✅ | Completar se bloquea con ajuste pendiente (v1.0) |
 | RF-08 Cancelaciones | Must | CA-08.1 a CA-08.6 y CA-16.9 | `requests/service.js` (`cancelar`) | ✅ | Cancelar rechaza el ajuste pendiente (v1.0); motivo sin penalización con evidencia (v1.3) |
 | RF-09 Reseñas | Must | CA-09.1 a CA-09.6 | `modules/reviews/*` | ✅ | El formulario muestra el monto final |
 | RF-10 Recálculo del ranking | Must | CA-10.1 a CA-10.9 | `ranking/*`, `shared/tareas.js` | ✅ | v1.2: solo penalizan ajustes rechazados; el recálculo diario lo dispara el ping de GitHub Actions |
-| RF-11 Avisos | Should | CA-11.1, CA-11.2 | `modules/extras/routes.js`, `shared/avisos.js` · `pages/Avisos.jsx` | ✅ | Avisos dentro de la app; correo y push como mejora futura (C-04) |
+| RF-11 Avisos | Should | CA-11.1 a CA-11.3 | `modules/extras/routes.js`, `shared/avisos.js` · `pages/Avisos.jsx` | ✅ | Avisos dentro de la app; correo y push como mejora futura (C-04) |
 | RF-12 Respuesta a reseñas | Should | CA-12.1 | `modules/extras/routes.js` · `pages/DetalleSolicitud.jsx` | ✅ | Una respuesta por reseña (C-04) |
 | RF-13 Reportes y suspensión | Should | CA-13.1, CA-13.2, CA-13.3 | `modules/extras/routes.js`, `workers/service.js`, `quotes/service.js` · `pages/Verificaciones.jsx` | ✅ | Suspendido no aparece ni cotiza (C-04) |
 | RF-14 Panel del trabajador | Could | CA-14.1 | `pages/MiPerfil.jsx` | ✅ | C-02 |
@@ -174,9 +184,9 @@ Prioridad: severidad (impacto en el usuario o en la seguridad) × frecuencia. Se
 | **RF-27 Cambiar contraseña** | **Must** | **CA-27.1** | `auth/service.js` · `Cuenta.jsx` | ✅ | **Nuevo (C-06)** |
 | **RF-28 Eliminar cuenta** | **Must** | **CA-28.1** | `auth/service.js` (`eliminarCuenta`) · `Cuenta.jsx` | ✅ | **Nuevo (C-06)** |
 | **RF-29 Aviso de privacidad** | **Must** | **CA-01.6** | `auth/*` · `Privacidad.jsx`, `Terminos.jsx`, `AceptarPrivacidad.jsx` | ✅ | **Nuevo (C-06)**; el contacto del responsable debe completarse antes de un lanzamiento real |
-| **RF-30 Visita de diagnóstico** | **Should** | **CA-30.1 a CA-30.7** | `adjustments/reglas.js`, `quotes/schemas.js` · `components/Precios.jsx` | ✅ | **Nuevo (C-07)** |
+| **RF-30 Visita de diagnóstico** | **Should** | **CA-30.1 a CA-30.8** | `adjustments/reglas.js`, `quotes/schemas.js` · `components/Precios.jsx` | ✅ | **Nuevo (C-07)** |
 | **RF-31 Insignias** | **Should** | **CA-17.4** | `workers/reputacion.js` · `TarjetaTrabajador.jsx`, `Trabajador.jsx`, `MiPerfil.jsx` | ✅ | **Nuevo (C-07)**; no cambian el ranking |
-| **RF-32 Cancelación con evidencia** | **Should** | **CA-08.6** | `requests/service.js` · `DetalleSolicitud.jsx` | ✅ | **Nuevo (C-07)** |
+| **RF-32 Cancelación con evidencia** | **Should** | **CA-08.6, CA-32.2** | `requests/service.js` · `DetalleSolicitud.jsx` | ✅ | **Nuevo (C-07)** |
 
 **Resumen:** 32 RF: **30 ✅**, **0 ⚠️**, **2 ❌** (RF-24 y RF-25: mejoras P2 y P3 del análisis, documentadas como pendientes).
 
@@ -194,7 +204,7 @@ Prioridad: severidad (impacto en el usuario o en la seguridad) × frecuencia. Se
 | RNF-02 Seguridad (bcrypt, HTTPS, sesión de 24 h; v1.1: límite de intentos y CSP) | ✅ | Pruebas de integración de bcrypt y del refresh token; `FORCE_HTTPS=true` en Render y redirección comprobada |
 | RNF-03 INE cifradas, solo admin | ✅ | Pruebas unitarias y de integración del cifrado y del 403 |
 | RNF-04 Dirección exacta protegida | ✅ | Pruebas que revisan que el JSON no la contenga |
-| RNF-05 Responsive 360 px | ⚠️ | Prueba automatizada a 360 px; falta evidencia en celular real |
+| RNF-05 Responsive 360 px | ⚠️ | Pruebas automatizadas a 360 y 1280 px; axe-core sin violaciones WCAG 2.2 AA (C-08); falta evidencia en celular real |
 | RNF-06 Solicitud en ≤ 5 pantallas | ✅ | 3 pantallas |
 
 ---
@@ -284,6 +294,7 @@ DATABASE_URL_TEST="postgresql://.../oficioya_test" npm test
 | Contrato 0.1 → 0.2 | 2026-09-22 → 2026-10-06 | Visión y contrato técnico: ADR, modelo de datos, máquina de estados y criterios con datos concretos |
 | Sistema 1.0 (MVP) / contrato 0.3 | 2026-11-04 | RF-01 a RF-10 y RF-15; 73 pruebas; despliegue frontend + Render + Neon; incidente del `.env` y rotación de claves; dependencias recortadas de 190 MB a 27 MB |
 | Sistema 2.0 / contrato 1.0 | 2026-11-25 | **RF-16 ajuste de precio** con aprobación del cliente y **RF-17 porcentaje con ajuste** (C-01); RF-14 panel completo (C-02); mensaje de error claro cuando la API no responde (C-03); avisos en la app, respuesta a reseñas y reportes con suspensión (C-04, RF-11 a RF-13); 98 pruebas |
+| Sistema 2.4 / contrato 1.4 | 2026-11-26 | Usabilidad y accesibilidad (C-08): mensajes flotantes, confirmaciones, navegación inferior, "Te toca", pasos con texto, títulos, foco, errores por campo, contador de avisos, fuente local, compresión de fotos, nuevo sistema visual; renovar cotización, cerrar con la visita, contador de desacuerdos; 139 pruebas |
 | Sistema 2.3 / contrato 1.3 | 2026-11-26 | Precios (C-07): cotización desglosada con vigencia, visita de diagnóstico abonable, cambios de precio por tipo con foto, bajas automáticas, tope solo sobre la mano de obra, ticket, cancelación sin penalización con evidencia, insignias, "termina X % arriba", preguntas antes de cotizar; 135 pruebas |
 | Sistema 2.2 / contrato 1.2 | 2026-11-26 | Análisis causa–consecuencia (C-06): aviso de privacidad, celular y contacto por WhatsApp, horario de visita, terminado por el trabajador con 72 h, reportes en ambos sentidos, cambiar contraseña, eliminar cuenta, ranking solo con ajustes rechazados, demo controlada, ping de disponibilidad; 114 pruebas |
 | Sistema 2.1 / contrato 1.1 | 2026-11-26 | Archivos persistentes en PostgreSQL, perfil público (RF-18), tope por oficio (RF-19), ajustes en el ranking, avisos por oficio y zona, reactivación de suspendidos, límite de intentos de login, CSP; 105 pruebas |
@@ -298,10 +309,10 @@ Priorizados en `docs/05-analisis-causa-consecuencia_OficioYa.md`.
 | RF-24 Confirmación del monto pagado | Un cobro acordado por fuera no se detecta | Ambas partes confirman el monto al terminar; si no coincide, revisión del admin |
 | RF-25 Volver a contratar | La segunda contratación ocurre fuera de la plataforma | Botón que crea la solicitud directa al mismo trabajador |
 | Celular sin verificar con código | Un número falso o ajeno | SMS con código (requiere proveedor) |
-| Avisos solo dentro de la app | El trabajador no se entera a tiempo de solicitudes nuevas | Correo o WhatsApp Business (requiere proveedor) |
+| Avisos solo dentro de la app | El trabajador no se entera a tiempo de solicitudes nuevas (mitigado con el contador en el menú, C-08) | Correo o WhatsApp Business (requiere proveedor) |
 | Datos del responsable en el aviso de privacidad | Falta el correo de contacto real | Completar `frontend/src/legal.js` y revisarlo con un abogado |
 | Retención de INE | Se guardan mientras la cuenta exista | Borrarlas 30 días después de la verificación |
-| Imágenes en la base de datos | Llenan el espacio gratuito de Neon | Comprimir en el navegador; migrar a almacenamiento de objetos al crecer |
+| Imágenes en la base de datos | Llenan el espacio gratuito de Neon (mitigado: compresión en el navegador, C-08) | Migrar a almacenamiento de objetos al crecer |
 | Trabajadores nuevos al final del ranking | No consiguen su primer trabajo | Intercalar "Nuevo" en los resultados |
 | Admin de demostración con contraseña conocida | Riesgo si llegan usuarios reales | Quitar `SEED_DEMO` y cambiar la contraseña al terminar la evaluación |
 

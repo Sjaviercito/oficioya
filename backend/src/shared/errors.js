@@ -28,7 +28,9 @@ function manejadorErrores(err, req, res, next) {
   }
   if (err instanceof ZodError) {
     const primero = err.issues[0];
-    return res.status(400).json({ error: { code: 'VALIDACION', message: primero ? primero.message : 'Datos inválidos' } });
+    // v1.4: "campo" permite que la interfaz marque el campo con error (WCAG 3.3.1).
+    const campo = primero && primero.path && primero.path.length ? String(primero.path[0]) : undefined;
+    return res.status(400).json({ error: { code: 'VALIDACION', message: primero ? primero.message : 'Datos inválidos', ...(campo ? { campo } : {}) } });
   }
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {

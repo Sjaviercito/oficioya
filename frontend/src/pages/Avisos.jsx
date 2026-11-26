@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Aviso from '../components/Aviso';
+import useTitulo from '../hooks/useTitulo';
 
 // RF-11: avisos dentro de la app.
 export default function Avisos() {
   const [lista, setLista] = useState(null);
   const [error, setError] = useState('');
+  useTitulo('Avisos');
   useEffect(() => {
     api.get('/notifications').then((l) => { setLista(l); api.post('/notifications/read').catch(() => {}); }).catch((e) => setError(e.message));
   }, []);

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { urlArchivo } from '../api/client';
+import { Icono } from './Iconos';
 import { Insignias } from './Precios';
 
 export default function TarjetaTrabajador({ t, extra }) {
@@ -10,16 +11,12 @@ export default function TarjetaTrabajador({ t, extra }) {
         {t.fotoUrl ? <img src={urlArchivo(t.fotoUrl)} alt="" /> : inicial}
       </div>
       <div>
-        <div style={{ fontWeight: 650 }}>{t.id ? <Link to={`/trabajadores/${t.id}`}>{t.nombre}</Link> : t.nombre}</div>
+        {t.id ? <Link to={`/trabajadores/${t.id}`} className="nombre-trabajador">{t.nombre}</Link> : <span className="nombre-trabajador">{t.nombre}</span>}
         <div className="pequeno suave">
-          <span className="sello">✓ Verificado</span>{' '}
+          <span className="sello"><Icono.check />Verificado</span>{' '}
           {t.trabajosCompletados} {t.trabajosCompletados === 1 ? 'trabajo' : 'trabajos'}
         </div>
-        {t.porcentajeConAjuste !== null && t.porcentajeConAjuste !== undefined && (
-          <div className="pequeno suave">{t.porcentajeConAjuste} % de sus trabajos tuvieron ajuste de precio</div>
-        )}
         <Insignias t={t} compacto />
-        {extra}
       </div>
       <div className="puntuacion">
         {t.esNuevo ? (
@@ -31,6 +28,7 @@ export default function TarjetaTrabajador({ t, extra }) {
           </>
         )}
       </div>
+      {extra && <div style={{ gridColumn: '1 / -1' }}>{extra}</div>}
     </div>
   );
 }

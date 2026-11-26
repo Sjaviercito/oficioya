@@ -13,7 +13,7 @@ const DEFINICION = {
 async function reputacionDe(ids) {
   const unicos = [...new Set(ids.filter(Boolean))];
   if (!unicos.length) return {};
-  const [perfiles, completadas, materiales] = await Promise.all([
+  const [perfiles, completadas, materiales, desacuerdos] = await Promise.all([
     prisma.perfilTrabajador.findMany({
       where: { id: { in: unicos } },
       select: { id: true, trabajosCompletados: true, cancelacionesAtribuibles: true },
@@ -25,6 +25,12 @@ async function reputacionDe(ids) {
     prisma.ajustePrecio.findMany({
       where: { estado: 'aceptado', deltaMaterial: { gt: 0 }, solicitud: { cotizacionAceptada: { trabajadorId: { in: unicos } } } },
       select: { ticketClave: true, solicitud: { select: { cotizacionAceptada: { select: { trabajadorId: true } } } } },
+    }),
+    // v1.4: cancelaciones sin penalización por desacuerdo de precio. No bajan el ranking, pero se
+    // muestran en el perfil para que el próximo cliente lo vea (control por reputación, no por vigilancia).
+    prisma.cancelacion.findMany({
+      where: { motivo: 'No puedo continuar con el precio original', rolQueCancela: 'trabajador', solicitud: { cotizacionAceptada: { trabajadorId: { in: unicos } } } },
+      select: { solicitud: { select: { cotizacionAceptada: { select: { trabajadorId: true } } } } },
     }),
   ]);
 
@@ -64,6 +70,7 @@ async function reputacionDe(ids) {
       sobreCotizadoPromedio: pcts.length >= MIN_TRABAJOS_METRICA ? Math.round(promedio * 100) : null,
       insignias: progreso.filter((x) => x.obtenida).map(({ clave, nombre }) => ({ clave, nombre })),
       progresoInsignias: progreso,
+      cancelacionesPorDesacuerdo: desacuerdos.filter((c) => c.solicitud.cotizacionAceptada.trabajadorId === p.id).length,
     };
   }
   return resultado;
